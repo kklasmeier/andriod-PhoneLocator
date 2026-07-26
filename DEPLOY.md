@@ -103,30 +103,71 @@ curl -s "http://192.168.1.26:8000/locator/api/v1/location/latest?device_id=test-
 
 ## Tests (local — no GitHub CI)
 
-Run from the repo root on your PC:
+### Windows (easiest — no execution-policy change)
 
-```powershell
-# Server unit tests only (fast, no network)
-.\scripts\test.ps1
+From the repo root:
+
+```cmd
+test.bat
 ```
 
-```powershell
-# + live smoke test against piSensors
-$env:PHONE_LOCATOR_API_TOKEN = "<token>"
-.\scripts\test.ps1 -Integration
+```cmd
+test.bat integration
 ```
 
-On Linux / piSensors (unit tests only):
+Set your token first (see **API token** below):
+
+```cmd
+set PHONE_LOCATOR_API_TOKEN=your-token-here
+test.bat integration
+```
+
+### PowerShell (if scripts are allowed)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Integration
+```
+
+### API token (you do not create this on Windows)
+
+The token was **generated automatically** when you ran `install-pisensors.sh` on piSensors.
+
+**Retrieve it on the Pi:**
+
+```bash
+ssh piSensors
+sudo grep PHONE_LOCATOR_API_TOKEN /etc/phone-locator/phone-locator.env
+```
+
+Copy the value after `=` (the long hex string). Use it on your PC:
+
+```cmd
+set PHONE_LOCATOR_API_TOKEN=paste-token-here
+test.bat integration
+```
+
+Or in PowerShell:
+
+```powershell
+$env:PHONE_LOCATOR_API_TOKEN = "paste-token-here"
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Integration
+```
+
+You only need the token for **integration** tests (live API on piSensors). **Unit tests do not need a token.**
+
+### Linux / piSensors
 
 ```bash
 ./scripts/test.sh
-./scripts/test.sh --integration   # needs PHONE_LOCATOR_API_TOKEN
+export PHONE_LOCATOR_API_TOKEN=<token>
+./scripts/test.sh --integration
 ```
 
-| Suite | Command | Needs |
-|-------|---------|-------|
-| Server unit | `.\scripts\test.ps1` | Python on PC |
-| Integration | `.\scripts\test.ps1 -Integration` | PC + LAN access to piSensors + token |
-| Android unit | `.\scripts\test.ps1 -Android` | Phase 2+; Android SDK on PC |
+| Suite | Command | Needs token? |
+|-------|---------|--------------|
+| Server unit | `test.bat` | No |
+| Integration | `test.bat integration` | Yes (from Pi) |
+| Android unit | `test.bat android` | No (Phase 2+) |
 
 GitHub Actions can be added later when the project is mature enough.
