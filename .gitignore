@@ -12,6 +12,8 @@ venv/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+server/venv/
+server/data/
 
 # SQLite (runtime data on Pi)
 *.db

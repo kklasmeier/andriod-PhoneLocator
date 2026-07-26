@@ -1,0 +1,16 @@
+[Unit]
+Description=Phone Locator API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/opt/phone-locator
+EnvironmentFile=-/etc/phone-locator/phone-locator.env
+ExecStart=/opt/phone-locator/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8003
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
