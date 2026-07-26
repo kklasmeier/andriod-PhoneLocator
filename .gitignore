@@ -1,0 +1,42 @@
+# Secrets — never commit
+.env
+.env.*
+*.pem
+credentials.json
+
+# Python / server
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# SQLite (runtime data on Pi)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Android
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.apk
+*.aab
+
+# Web / Node (if added later)
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
