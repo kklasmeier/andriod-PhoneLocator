@@ -68,11 +68,16 @@ else
 fi
 
 echo "==> Health check"
-sleep 1
-curl -fsS "http://127.0.0.1:8003/api/v1/health"
-echo ""
-curl -fsS "http://127.0.0.1:8000/locator/api/v1/health" || echo "(nginx /locator/ path not ready yet)"
-echo ""
+sleep 2
+for i in 1 2 3 4 5; do
+  if curl -fsS "http://127.0.0.1:8003/api/v1/health" >/dev/null 2>&1; then
+    curl -fsS "http://127.0.0.1:8003/api/v1/health"
+    echo ""
+    break
+  fi
+  sleep 1
+done
+curl -fsS "http://127.0.0.1:8000/locator/api/v1/health" 2>/dev/null && echo "" || echo "(nginx /locator/ path not ready yet)"
 echo "==> Done."
 echo "    Direct:  http://$(hostname -I | awk '{print $1}'):8003/api/v1/health"
 echo "    nginx:   http://$(hostname -I | awk '{print $1}'):8000/locator/api/v1/health"

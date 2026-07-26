@@ -1,0 +1,3 @@
+# Dev / test dependencies (not installed on piSensors production venv)
+-r requirements.txt
+httpx==0.28.1
