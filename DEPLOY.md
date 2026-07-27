@@ -156,7 +156,7 @@ From the repo root in **PowerShell** (note the `.\` prefix):
 Integration tests (live piSensors API):
 
 ```powershell
-$env:PHONE_LOCATOR_API_TOKEN = "fab06e8c4d29dc31afaaa8e8785ebd4fbc70af8c14f01d5d06189d7d4f29bcba"
+$env:PHONE_LOCATOR_API_TOKEN = "paste-token-from-pi-here"
 $env:PHONE_LOCATOR_TEST_URL = "http://192.168.1.26:8000/locator"
 .\test.bat integration
 ```
