@@ -7,6 +7,48 @@ API runs on **piSensors** (`192.168.1.26`) at `127.0.0.1:8003`, proxied by nginx
 | `http://192.168.1.26:8000/locator/api/v1/health` | Health (via nginx) |
 | `http://192.168.1.26:8000/locator/api/v1/location/...` | API (via nginx) |
 | `http://127.0.0.1:8003/api/v1/...` | Direct on Pi (debug) |
+| `https://kklasmei.mooo.com/api/v1/...` | Public HTTPS (Phase 3 — phone) |
+
+---
+
+## Phase 3 — HTTPS (public API)
+
+### 1. Router (manual)
+
+Forward these ports to **piSensors** (`192.168.1.26`):
+
+| External | Internal | Purpose |
+|----------|----------|---------|
+| TCP **443** | 443 | HTTPS API + web |
+| TCP **80** | 80 | Let's Encrypt renewal (may already be forwarded) |
+
+Confirm DDNS: `kklasmei.mooo.com` → your current public IP.
+
+### 2. Install certificate on piSensors
+
+```bash
+ssh piSensors
+cd ~/andriod-PhoneLocator
+git pull
+CERTBOT_EMAIL=you@example.com bash server/deploy/install-https-pisensors.sh
+```
+
+### 3. Verify
+
+On piSensors:
+
+```bash
+curl -s https://kklasmei.mooo.com/api/v1/health
+```
+
+Off home WiFi (cellular), same URL should work.
+
+### 4. Update phone app
+
+**Settings → API URL:** `https://kklasmei.mooo.com`  
+(Token unchanged.) Tap **Test connection**, then **Sync now**.
+
+LAN URL (`http://192.168.1.26:8000/locator`) still works at home; HTTPS works everywhere.
 
 ---
 
@@ -114,7 +156,15 @@ From the repo root in **PowerShell** (note the `.\` prefix):
 Integration tests (live piSensors API):
 
 ```powershell
-$env:PHONE_LOCATOR_API_TOKEN = "paste-token-from-pi-here"
+$env:PHONE_LOCATOR_API_TOKEN = "fab06e8c4d29dc31afaaa8e8785ebd4fbc70af8c14f01d5d06189d7d4f29bcba"
+$env:PHONE_LOCATOR_TEST_URL = "http://192.168.1.26:8000/locator"
+.\test.bat integration
+```
+
+After Phase 3 HTTPS:
+
+```powershell
+$env:PHONE_LOCATOR_TEST_URL = "https://kklasmei.mooo.com"
 .\test.bat integration
 ```
 

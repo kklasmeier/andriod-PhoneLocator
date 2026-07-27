@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 const val DEFAULT_API_URL = "http://192.168.1.26:8000/locator"
+const val PRODUCTION_API_URL = "https://kklasmei.mooo.com"
 const val DEFAULT_INTERVAL_MINUTES = 3
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "phone_locator_settings")
@@ -108,6 +109,7 @@ class SettingsRepository(private val context: Context) {
 
     companion object {
         val DEFAULT_API_URL = com.klasmeier.phonelocator.data.DEFAULT_API_URL
+        val PRODUCTION_API_URL = com.klasmeier.phonelocator.data.PRODUCTION_API_URL
         val DEFAULT_INTERVAL_MINUTES = com.klasmeier.phonelocator.data.DEFAULT_INTERVAL_MINUTES
     }
 }
