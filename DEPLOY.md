@@ -105,21 +105,24 @@ curl -s "http://192.168.1.26:8000/locator/api/v1/location/latest?device_id=test-
 
 ### Windows (easiest — no execution-policy change)
 
-From the repo root:
+From the repo root in **PowerShell** (note the `.\` prefix):
 
-```cmd
-test.bat
+```powershell
+.\test.bat
 ```
 
-```cmd
-test.bat integration
+Integration tests (live piSensors API):
+
+```powershell
+$env:PHONE_LOCATOR_API_TOKEN = "paste-token-from-pi-here"
+.\test.bat integration
 ```
 
-Set your token first (see **API token** below):
+In **cmd.exe** (not PowerShell), environment variables use `set`:
 
 ```cmd
-set PHONE_LOCATOR_API_TOKEN=your-token-here
-test.bat integration
+set PHONE_LOCATOR_API_TOKEN=paste-token-here
+.\test.bat integration
 ```
 
 ### PowerShell (if scripts are allowed)
@@ -144,7 +147,7 @@ Copy the value after `=` (the long hex string). Use it on your PC:
 
 ```cmd
 set PHONE_LOCATOR_API_TOKEN=paste-token-here
-test.bat integration
+.\test.bat integration
 ```
 
 Or in PowerShell:
@@ -156,6 +159,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Integration
 
 You only need the token for **integration** tests (live API on piSensors). **Unit tests do not need a token.**
 
+### Android debug APK (pre-fill token on setup)
+
+On your PC (writes gitignored `android/secrets.properties`):
+
+```powershell
+.\scripts\sync-android-secrets.ps1 -FromPiSensors
+cd android
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+Debug builds pre-fill API URL and token on the setup screen. **Phase 9** will add QR scan pairing instead.
+
 ### Linux / piSensors
 
 ```bash
@@ -166,8 +182,8 @@ export PHONE_LOCATOR_API_TOKEN=<token>
 
 | Suite | Command | Needs token? |
 |-------|---------|--------------|
-| Server unit | `test.bat` | No |
-| Integration | `test.bat integration` | Yes (from Pi) |
-| Android unit | `test.bat android` | No (Phase 2+) |
+| Server unit | `.\test.bat` | No |
+| Integration | `.\test.bat integration` | Yes (from Pi) |
+| Android unit | `.\test.bat android` | No (Phase 2+) |
 
 GitHub Actions can be added later when the project is mature enough.

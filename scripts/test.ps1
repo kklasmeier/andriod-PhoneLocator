@@ -42,7 +42,8 @@ if ($Integration) {
     }
     if (-not $env:PHONE_LOCATOR_API_TOKEN) {
         Write-Host "ERROR: Set PHONE_LOCATOR_API_TOKEN for integration tests" -ForegroundColor Red
-        Write-Host "  `$env:PHONE_LOCATOR_API_TOKEN = '<token from piSensors>'"
+        Write-Host '  PowerShell:  $env:PHONE_LOCATOR_API_TOKEN = "<token from piSensors>"'
+        Write-Host "  cmd.exe:     set PHONE_LOCATOR_API_TOKEN=<token>"
         Pop-Location
         exit 1
     }
@@ -54,19 +55,16 @@ if ($Integration) {
 Pop-Location
 
 $AndroidDir = Join-Path $RepoRoot "android"
-if ($Android -or (Test-Path (Join-Path $AndroidDir "gradlew.bat"))) {
+if ($Android) {
     if (-not (Test-Path (Join-Path $AndroidDir "gradlew.bat"))) {
-        if ($Android) {
-            Write-Host "ERROR: android/ not scaffolded yet" -ForegroundColor Red
-            exit 1
-        }
-    } else {
-        Write-Host "==> Android unit tests"
-        Push-Location $AndroidDir
-        .\gradlew.bat test
-        if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
-        Pop-Location
+        Write-Host "ERROR: android/ not scaffolded yet" -ForegroundColor Red
+        exit 1
     }
+    Write-Host "==> Android unit tests"
+    Push-Location $AndroidDir
+    .\gradlew.bat test
+    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+    Pop-Location
 }
 
 Write-Host "==> All requested tests passed" -ForegroundColor Green

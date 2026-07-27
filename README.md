@@ -2,7 +2,7 @@
 
 Self-hosted Android phone location tracker. The phone pushes GPS and telemetry to an API on a Raspberry Pi; a web dashboard provides maps, history, and analytics.
 
-**Status:** Design phase — see [PROJECT.md](PROJECT.md) for the full specification.
+**Status:** Phase 2 complete (Android MVP) — install debug APK and complete setup on phone
 
 ## Personal project
 

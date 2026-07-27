@@ -3,6 +3,7 @@
 .env.*
 *.pem
 credentials.json
+android/secrets.properties
 
 # Python / server
 __pycache__/
@@ -12,8 +13,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
-server/venv/
-server/data/
+android/local.properties
 
 # SQLite (runtime data on Pi)
 *.db

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Phone Locator</string>
+    <string name="notification_channel_name">Location tracking</string>
+    <string name="notification_channel_description">Shows when Phone Locator is sending your location</string>
+    <string name="setup_title">Phone Locator setup</string>
+    <string name="status_title">Status</string>
+    <string name="settings_title">Settings</string>
+    <string name="log_title">Activity log</string>
+</resources>

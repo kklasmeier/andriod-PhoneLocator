@@ -4,7 +4,7 @@
 **Last updated:** July 26, 2026  
 **Status:** Design — not yet implemented  
 
-**Revision notes (Jul 26):** piSensors port audit; multi-site HTTPS via nginx; phone stores queue + summaries only (full history on server); web dashboard IA and layout; API backend port 8003; Android app IA (lean, collection-first); resizable Glance home screen widget.  
+**Revision notes (Jul 26):** piSensors port audit; multi-site HTTPS via nginx; phone stores queue + summaries only (full history on server); web dashboard IA and layout; API backend port 8003; Android app IA (lean, collection-first); resizable Glance home screen widget; **Phase 8 — known Wi-Fi places** (SSID → learned location, skip GPS at home).  
 
 This document is the single source of truth for *what* we are building and *why*. Implementation details (exact commands, file layouts, deploy scripts) will be added during build phases.
 
@@ -30,6 +30,7 @@ This document is the single source of truth for *what* we are building and *why*
     - [Notification](#97-persistent-notification)
     - [What the app does not include](#98-what-the-app-does-not-include)
     - [Home screen widget](#910-home-screen-widget)
+    - [Known Wi-Fi places (future)](#911-known-wi-fi-places-future)
 10. [Web dashboard](#10-web-dashboard)
     - [Site map](#101-site-map)
     - [Global UI patterns](#102-global-ui-patterns)
@@ -549,7 +550,7 @@ Settings opens from the gear icon (not a tab — rarely used).
 | Current location | Local latest fix | Text only — no in-app map |
 | Battery / network / activity | Latest fix payload | |
 | Problem banners | Local checks | Actionable — tap to fix (opens Settings or system dialog) |
-| **Sync now** | Action | Force immediate queue flush |
+| **Sync now** | Action | Collect fresh GPS, upload immediately, log result, show status feedback |
 | **Pause tracking** | Action | Stops collection; notification updates |
 | **Open dashboard** | Deep link | `http://192.168.1.26:8000/locator/` — works on home WiFi |
 
@@ -660,7 +661,7 @@ Shown once before main UI. Steps:
 1. **Welcome** — explain foreground notification (required)
 2. **Permissions** — location (foreground → background), activity recognition
 3. **Battery** — prompt to disable optimization for this app
-4. **Connection** — URL (default `https://kklasmei.mooo.com`), token, device ID
+4. **Connection** — URL (default LAN or production), token (typed, debug pre-fill, or **Phase 9** QR scan), device ID
 5. **Test** — POST test point, confirm success
 6. **Done** — start foreground service
 
@@ -746,6 +747,7 @@ Explicitly out of scope — use the web dashboard instead:
 | `summary_cache` | API responses (today, week teaser) | Until refreshed; small |
 | `activity_log` | Upload events | Last 50–100 rows, FIFO |
 | `ops_counters` | 24h success rate, last sent timestamps | Rolling |
+| `known_wifi_places` | *(Phase 8)* SSID → learned lat/lon | Until user deletes or re-learns |
 
 ### API calls from app
 
@@ -758,11 +760,90 @@ Explicitly out of scope — use the web dashboard instead:
 | `GET /api/v1/location/latest` | Optional — verify server has latest after sync |
 | `GET /api/v1/health` | Settings → test connection |
 
-### Adaptive interval (future)
+### Adaptive interval (future — Phase 7)
 
 - 3 min when moving
 - 10–15 min when stationary (same cluster for >15 min)
 - Reduces battery and data volume without losing place detection accuracy
+
+### 9.11 Known Wi-Fi places (future — Phase 8)
+
+**Motivation:** GPS is the dominant battery cost per collection cycle. When the phone is on a **known Wi-Fi network** (e.g. home SSID `ZNet`), the app can skip the GPS radio and send a **learned fixed location** for that network instead.
+
+**Already in place (Phase 2):** each upload includes `network_type` and optional `wifi_ssid` (requires location permission on Android 10+). This phase adds *behavior* on top of that data.
+
+#### Concept
+
+```text
+Learning (first visits on ZNet):
+  → collect GPS as today (several good fixes)
+  → store mapping: SSID "ZNet" → (lat, lon, accuracy, learned_at)
+
+Routine (later visits on ZNet):
+  → detect connected Wi-Fi SSID matches known entry
+  → skip GPS; enqueue point with learned coordinates + wifi_ssid
+  → set location_provider = "wifi_known" (or similar) for analytics
+
+Away from known Wi-Fi:
+  → fall back to normal GPS collection (unchanged)
+```
+
+#### Expected battery impact
+
+| Scenario | GPS every 3 min | Known Wi-Fi shortcut |
+|----------|-----------------|----------------------|
+| At home on ZNet (~16 h/day) | Full GPS wake each cycle | Wi-Fi/SSID check only |
+| Away / cellular | Full GPS | Full GPS (unchanged) |
+
+Rough expectation: **meaningful savings during long stationary home periods** (often 30–50% less location-related drain while at home). Exact savings depend on interval, OEM, and how much time is spent on known networks.
+
+#### Learning modes (to align in design)
+
+| Mode | Description |
+|------|-------------|
+| **Auto-learn** | After *N* GPS fixes on the same SSID within *M* days, compute centroid (or best-accuracy fix) and enable shortcut |
+| **User-labeled** | Settings UI: "ZNet = Home" — confirm or override learned coordinates |
+| **Server hint** *(optional)* | Phase 5 place clusters where `wifi_ssid` is dominant → suggest name/coords to app |
+
+#### Local storage (`known_wifi_places`)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `ssid` | TEXT PK | Normalized SSID (e.g. `ZNet`) |
+| `latitude` | REAL | Learned |
+| `longitude` | REAL | Learned |
+| `accuracy_m` | REAL | Typical accuracy when learned |
+| `label` | TEXT | Optional user name ("Home") |
+| `learned_at` | TEXT ISO | When mapping was created/updated |
+| `sample_count` | INTEGER | Fixes used for learning |
+| `enabled` | BOOLEAN | User can disable per network |
+
+#### Edge cases (open — see §17 O9)
+
+- **Duplicate SSIDs** — same SSID name at a different physical location (friend's router, ISP default)
+- **`<unknown ssid>`** — Android privacy restriction; must fall back to GPS
+- **VPN / captive portal** — connected to Wi-Fi but not truly "at" that place (rare for home)
+- **In-home movement** — single point per SSID is enough for "phone is at home"; not room-level
+- **Re-learn** — user moves home router or coordinates drift; manual reset or periodic re-sample
+
+#### Relationship to other phases
+
+| Phase | Role |
+|-------|------|
+| **5 Analytics** | Server may infer SSID ↔ place from history; can feed suggestions |
+| **7 Polish** | Adaptive interval complements Wi-Fi shortcut (slower GPS when stationary, no GPS when on known Wi-Fi) |
+| **8 Known Wi-Fi** | This feature — phone-side SSID map and GPS skip logic |
+
+#### Android build order (Phase 8)
+
+| Step | Deliverable |
+|------|-------------|
+| B1 | Room `known_wifi_places` + DAO |
+| B2 | Learning logic after GPS collect (auto-learn threshold) |
+| B3 | Collection path: SSID match → skip GPS, use cached coords |
+| B4 | Settings UI — list known networks, rename, disable, forget, re-learn |
+| B5 | Activity log entries when shortcut used vs GPS |
+| B6 | Unit tests for matching, learning threshold, fallback |
 
 ### Android build order
 
@@ -1473,6 +1554,8 @@ Execute in order. Do not skip Phase 1–3 before exposing to the internet.
 | **5** | Analytics | Place/visit/travel segmentation on server; summary API |
 | **6** | Web dashboard | Map, trail, timeline, places, reports, health panel, export |
 | **7** | Polish | Adaptive interval, place naming, purge UI, multi-device support |
+| **8** | Known Wi-Fi places | Learn SSID → location on phone; skip GPS when on known Wi-Fi (e.g. ZNet at home) |
+| **9** | QR pairing | Server shows setup QR (URL + token); phone scans to fill setup — no typing |
 
 ### Phase 1 acceptance criteria
 
@@ -1497,6 +1580,25 @@ Execute in order. Do not skip Phase 1–3 before exposing to the internet.
 - [ ] Valid TLS certificate (no browser/app warnings)
 - [ ] Cert auto-renewal configured
 
+### Phase 8 acceptance criteria *(draft — align before build)*
+
+- [ ] App learns coordinates for a Wi-Fi SSID after configurable GPS samples
+- [ ] On known SSID, collection skips GPS and uploads learned lat/lon with `wifi_ssid` set
+- [ ] Unknown SSID, cellular, or `<unknown ssid>` falls back to normal GPS
+- [ ] Settings shows known networks with rename / disable / forget / re-learn
+- [ ] Activity log distinguishes `wifi_known` vs GPS-sourced points
+- [ ] Battery impact measurable on home Wi-Fi (manual check: Settings → Battery)
+
+### Phase 9 acceptance criteria *(draft — align before build)*
+
+- [ ] Server (or deploy script) can display/generate a one-time or rotatable pairing QR
+- [ ] QR payload includes API base URL and Bearer token (or short-lived pairing code exchanged for token)
+- [ ] Android setup screen has **Scan QR** — fills URL + token fields
+- [ ] Works on LAN first; optional public HTTPS URL in QR after Phase 3
+- [ ] Token never committed to git; QR generated on demand from piSensors config
+
+**Debug shortcut (Phase 2):** `android/secrets.properties` (gitignored) → `BuildConfig.DEFAULT_API_TOKEN` for local debug APKs only. Sync via `scripts/sync-android-secrets.ps1 -FromPiSensors`.
+
 ---
 
 ## 17. Open items
@@ -1511,6 +1613,7 @@ Execute in order. Do not skip Phase 1–3 before exposing to the internet.
 | O5 | Place cluster radius | Default 100 m — tune after real-world data |
 | O6 | Persistent notification text | Required by Android; wording TBD |
 | O7 | afraid.org IP updates | Confirm DDNS client keeps `kklasmei.mooo.com` current if ISP IP changes |
+| O9 | **Known Wi-Fi places (Phase 8)** | Design alignment: auto-learn thresholds (N fixes, min accuracy); duplicate-SSID policy; user labeling vs auto-only; whether server (Phase 5) suggests mappings; `location_provider` value for shortcut points; re-learn cadence |
 
 ---
 
