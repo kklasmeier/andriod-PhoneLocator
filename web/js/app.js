@@ -109,14 +109,14 @@ async function renderHome() {
         <div class="card-sub">${latest?.location_provider || "—"}</div>
       </div>
     </div>
-    <div class="split">
-      <div class="map-panel">
+    <div class="home-map-section">
+      <div class="map-panel home">
         <div class="map-controls">
           <button type="button" class="secondary" id="fit-trail-btn">Fit trail</button>
         </div>
         <div id="home-map" class="map-container"></div>
       </div>
-      <div class="panel">
+      <div class="panel home-places">
         <h3>Top places</h3>
         ${bars || '<div class="empty">No visits in period</div>'}
         ${summary.week_teaser ? `<p style="font-size:0.85rem;color:var(--muted);margin-top:1rem">This week: ${summary.week_teaser.places_count} places · ${formatDuration(summary.week_teaser.travel_duration_sec)} travel</p>` : ""}

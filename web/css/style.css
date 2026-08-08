@@ -232,6 +232,26 @@ button:hover { filter: brightness(1.08); }
   margin-top: 1rem;
 }
 
+.home-map-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.map-panel.home {
+  min-height: min(65vh, calc(100vh - 300px));
+}
+
+.map-panel.home .map-container {
+  height: min(65vh, calc(100vh - 300px));
+  min-height: 480px;
+}
+
+.home-places .bar-row {
+  grid-template-columns: 120px 1fr 80px;
+}
+
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr; }
   .nav { order: 3; width: 100%; }
