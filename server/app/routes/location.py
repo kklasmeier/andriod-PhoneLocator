@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -46,12 +46,18 @@ def location_history(
     from_ts: Annotated[str | None, Query(alias="from")] = None,
     to_ts: Annotated[str | None, Query(alias="to")] = None,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    order: Annotated[Literal["asc", "desc"], Query()] = "asc",
+    sample: Annotated[bool, Query()] = True,
 ) -> HistoryResponse:
     points, total_count, sampled = database.get_history(
         device_id=device_id,
         from_ts=from_ts,
         to_ts=to_ts,
         limit=limit,
+        offset=offset,
+        order=order,
+        sample=sample,
     )
     return HistoryResponse(
         device_id=device_id,

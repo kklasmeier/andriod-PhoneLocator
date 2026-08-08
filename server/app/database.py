@@ -396,6 +396,9 @@ def get_history(
     from_ts: str | None = None,
     to_ts: str | None = None,
     limit: int = 500,
+    offset: int = 0,
+    order: str = "asc",
+    sample: bool = True,
 ) -> tuple[list[LocationPointOut], int, bool]:
     clauses = ["device_id = ?"]
     params: list[Any] = [device_id]
@@ -408,6 +411,7 @@ def get_history(
         params.append(to_ts)
 
     where_sql = " AND ".join(clauses)
+    order_dir = "DESC" if order == "desc" else "ASC"
 
     with get_connection() as conn:
         total = conn.execute(
@@ -417,6 +421,19 @@ def get_history(
 
         if total == 0:
             return [], 0, False
+
+        if not sample:
+            rows = conn.execute(
+                f"""
+                SELECT {HISTORY_POINT_COLUMNS}
+                FROM location_points
+                WHERE {where_sql}
+                ORDER BY recorded_at {order_dir}, id {order_dir}
+                LIMIT ? OFFSET ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+            return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows], total, False
 
         if total <= limit:
             rows = conn.execute(

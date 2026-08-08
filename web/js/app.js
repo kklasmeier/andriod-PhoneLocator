@@ -616,20 +616,11 @@ async function renderTravel() {
   `;
 }
 
-async function renderHistory() {
-  setActiveNav("/history");
-  setBanner(null);
-  appEl.innerHTML = `<div class="loading">Loading history…</div>`;
+const HISTORY_PAGE_SIZE = 500;
+let historyState = { points: [], total: 0 };
 
-  const range = getRange();
-  const data = await apiGet("/api/v1/location/history", deviceParams({
-    from: range.from,
-    to: range.to,
-    limit: range.historyLimit,
-  }));
-
-  const points = data.points || [];
-  const rows = points
+function historyRowsHtml(points) {
+  return points
     .map(
       (p) => `
       <tr>
@@ -642,34 +633,96 @@ async function renderHistory() {
       </tr>`
     )
     .join("");
+}
+
+function exportHistoryCsv(points) {
+  const header = "recorded_at,latitude,longitude,accuracy_m,battery_pct,network_type\n";
+  const body = points
+    .map((p) =>
+      [p.recorded_at, p.latitude, p.longitude, p.accuracy_m ?? "", p.battery_pct ?? "", p.network_type ?? ""].join(",")
+    )
+    .join("\n");
+  const blob = new Blob([header + body], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `phone-locator-history-${formatAnchorDateForExport()}.csv`;
+  a.click();
+}
+
+function renderHistoryContent() {
+  const { points, total } = historyState;
+  const canLoadMore = points.length < total;
+  const rows = historyRowsHtml(points);
 
   appEl.innerHTML = `
     <h1 class="page-title">History</h1>
-    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem">Showing ${points.length} points (max 500 per page)</p>
+    <p class="page-hint">
+      Showing ${points.length.toLocaleString()} of ${total.toLocaleString()} points (newest first).
+      Export CSV includes only the rows loaded below.
+    </p>
     <div class="form-actions" style="margin-bottom:1rem">
-      <button type="button" id="export-csv">Export CSV</button>
+      <button type="button" id="export-csv">Export CSV (${points.length})</button>
+      ${canLoadMore ? `<button type="button" class="secondary" id="load-more-history">Load more</button>` : ""}
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Recorded</th><th>Lat</th><th>Lon</th><th>Acc (m)</th><th>Battery</th><th>Network</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6">No points</td></tr>'}</tbody>
+        <tbody id="history-tbody">${rows || '<tr><td colspan="6">No points</td></tr>'}</tbody>
       </table>
     </div>
   `;
 
   document.getElementById("export-csv")?.addEventListener("click", () => {
-    const header = "recorded_at,latitude,longitude,accuracy_m,battery_pct,network_type\n";
-    const body = points
-      .map((p) =>
-        [p.recorded_at, p.latitude, p.longitude, p.accuracy_m ?? "", p.battery_pct ?? "", p.network_type ?? ""].join(",")
-      )
-      .join("\n");
-    const blob = new Blob([header + body], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `phone-locator-history-${formatAnchorDateForExport()}.csv`;
-    a.click();
+    exportHistoryCsv(historyState.points);
   });
+
+  document.getElementById("load-more-history")?.addEventListener("click", async () => {
+    const btn = document.getElementById("load-more-history");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Loading…";
+    }
+    try {
+      await loadMoreHistory();
+    } catch (err) {
+      showError(err);
+    }
+  });
+}
+
+async function loadHistoryPage({ reset = false } = {}) {
+  if (reset) {
+    historyState = { points: [], total: 0 };
+  }
+
+  const range = getRange();
+  const data = await apiGet("/api/v1/location/history", deviceParams({
+    from: range.from,
+    to: range.to,
+    limit: HISTORY_PAGE_SIZE,
+    offset: historyState.points.length,
+    order: "desc",
+    sample: false,
+  }));
+
+  const page = data.points || [];
+  historyState.points = reset ? page : [...historyState.points, ...page];
+  historyState.total = data.total_count ?? historyState.points.length;
+  return data;
+}
+
+async function loadMoreHistory() {
+  await loadHistoryPage();
+  renderHistoryContent();
+}
+
+async function renderHistory() {
+  setActiveNav("/history");
+  setBanner(null);
+  appEl.innerHTML = `<div class="loading">Loading history…</div>`;
+
+  await loadHistoryPage({ reset: true });
+  renderHistoryContent();
 }
 
 function formatAnchorDateForExport() {
