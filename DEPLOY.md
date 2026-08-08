@@ -7,22 +7,59 @@ API runs on **piSensors** (`192.168.1.26`) at `127.0.0.1:8003`, proxied by nginx
 | `http://192.168.1.26:8000/locator/api/v1/health` | Health (via nginx) |
 | `http://192.168.1.26:8000/locator/api/v1/location/...` | API (via nginx) |
 | `http://127.0.0.1:8003/api/v1/...` | Direct on Pi (debug) |
-| `https://kklasmei.mooo.com/api/v1/...` | Public HTTPS (Phase 3 — phone) |
+| `https://kklasmei.mooo.com/api/v1/...` | Public HTTPS (Phase 3 — **deferred**) |
 
 ---
 
-## Phase 3 — HTTPS (public API)
+## Remote access — WireGuard VPN (current)
 
-### 1. Router (manual)
+The phone uses the **LAN URL** on home WiFi or over WireGuard. No router TCP port forwarding required for the locator API.
+
+| Item | Value |
+|------|-------|
+| Phone API URL | `http://192.168.1.26:8000/locator` |
+| WireGuard endpoint | `kklasmei.mooo.com:51822` (UDP → piGateway `.100`) |
+| Health check (VPN or LAN) | `http://192.168.1.26:8000/locator/api/v1/health` |
+
+1. Connect WireGuard on the phone.
+2. In the app **Settings → API URL**, use `http://192.168.1.26:8000/locator`.
+3. Tap **Test connection** / **Sync now**.
+
+---
+
+## Phase 3 — HTTPS (public API) — deferred
+
+Nighthawk port forwarding / Let's Encrypt did not reach a reliable setup. Revisit later (Cloudflare Tunnel, own domain, or fixed router forwards). Scripts remain in `server/deploy/` for when needed.
+
+### Original plan (not active)
+
+### 1. Router (manual) — **required before certbot**
 
 Forward these ports to **piSensors** (`192.168.1.26`):
 
 | External | Internal | Purpose |
 |----------|----------|---------|
-| TCP **443** | 443 | HTTPS API + web |
-| TCP **80** | 80 | Let's Encrypt renewal (may already be forwarded) |
+| TCP **80** | 80 | **Let's Encrypt certificate** (HTTP-01 challenge) |
+| TCP **443** | 443 | HTTPS API after cert is issued |
 
-Confirm DDNS: `kklasmei.mooo.com` → your current public IP.
+Confirm DDNS: `kklasmei.mooo.com` → your current public IP (`74.215.40.180` as of Jul 26).
+
+**Verify port 80 from outside** (phone on cellular, or https://www.yougetsignal.com/tools/open-ports/):
+
+```text
+Host: kklasmei.mooo.com   Port: 80   → should be OPEN
+```
+
+On piSensors (local nginx only — proves Pi is ready, not the router):
+
+```bash
+sudo mkdir -p /var/www/certbot/.well-known/acme-challenge
+echo ping | sudo tee /var/www/certbot/.well-known/acme-challenge/ping
+curl -s -H 'Host: kklasmei.mooo.com' http://127.0.0.1/.well-known/acme-challenge/ping
+# should print: ping
+```
+
+If local works but external times out → **router port 80 forward** is missing or points to the wrong device.
 
 ### 2. Install certificate on piSensors
 
@@ -73,6 +110,8 @@ cd ~/andriod-PhoneLocator
 git pull
 ./deploy.sh
 ```
+
+**Web dashboard:** open `http://192.168.1.26:8000/locator/` in a browser. On first visit, go to **Settings** and enter your API token and device ID (`0ab2b40f-c496-49f4-990d-9309573445d4`).
 
 ---
 

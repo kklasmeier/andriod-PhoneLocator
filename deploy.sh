@@ -12,6 +12,7 @@ sudo rsync -a --delete \
   --exclude data \
   "${REPO_ROOT}/server/app" \
   "${REPO_ROOT}/server/requirements.txt" \
+  "${REPO_ROOT}/web" \
   "${INSTALL_ROOT}/"
 sudo chown -R pi:pi "${INSTALL_ROOT}"
 
@@ -23,3 +24,4 @@ fi
 
 sudo systemctl restart phone-locator
 echo "==> Done. Health: http://$(hostname -I | awk '{print $1}'):8000/locator/api/v1/health"
+echo "==> Dashboard: http://$(hostname -I | awk '{print $1}'):8000/locator/"

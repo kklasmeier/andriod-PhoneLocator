@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phone Locator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">📍</span>
+      <span class="brand-title">Phone Locator</span>
+    </div>
+    <nav class="nav" id="main-nav">
+      <a href="#/" data-route="/">Home</a>
+      <a href="#/map" data-route="/map">Map</a>
+      <a href="#/timeline" data-route="/timeline">Timeline</a>
+      <a href="#/places" data-route="/places">Places</a>
+      <a href="#/travel" data-route="/travel">Travel</a>
+      <a href="#/history" data-route="/history">History</a>
+      <a href="#/settings" data-route="/settings">Settings</a>
+    </nav>
+    <div class="toolbar">
+      <label class="toolbar-label">
+        Period
+        <select id="period-select">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="week">This week</option>
+          <option value="month">This month</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+  <main id="app" class="app"></main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
