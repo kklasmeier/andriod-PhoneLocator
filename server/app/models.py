@@ -133,6 +133,8 @@ class TravelSegmentOut(BaseModel):
     device_id: str
     from_visit_id: int | None = None
     to_visit_id: int | None = None
+    from_place_name: str | None = None
+    to_place_name: str | None = None
     started_at: str
     ended_at: str
     duration_sec: int

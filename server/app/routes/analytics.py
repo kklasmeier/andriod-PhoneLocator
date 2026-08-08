@@ -123,15 +123,17 @@ def list_travel(
     limit: Annotated[int, Query(ge=1, le=2000)] = 200,
 ) -> TravelResponse:
     from_iso, to_iso = resolve_range(from_value, to_value)
-    analytics_service.ensure_computed(device_id)
-    rows = database.get_travel_segments(
+    segments = analytics_service.build_travel_list(
         device_id=device_id,
         from_iso=from_iso,
         to_iso=to_iso,
         limit=limit,
     )
-    segments = [TravelSegmentOut(**row) for row in rows]
-    return TravelResponse(device_id=device_id, count=len(segments), segments=segments)
+    return TravelResponse(
+        device_id=device_id,
+        count=len(segments),
+        segments=[TravelSegmentOut(**row) for row in segments],
+    )
 
 
 @stats_router.get("/summary", response_model=StatsSummaryResponse)

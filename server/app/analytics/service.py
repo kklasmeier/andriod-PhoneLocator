@@ -8,6 +8,7 @@ from app.analytics.auto_naming import auto_rename_places
 from app.analytics.engine import TrackPoint, assign_visit_place_ids, cluster_places, segment_points
 from app.analytics.presentation import apply_presentation_rules
 from app.analytics.periods import overlap_seconds, resolve_period
+from app.analytics.travel_links import match_adjacent_visit_ids
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,64 @@ def build_summary(
         }
 
     return result
+
+
+def _place_name_for_visit(visit: dict | None, places_by_id: dict[int, dict]) -> str | None:
+    if visit is None:
+        return None
+    place_id = visit.get("place_id")
+    if place_id is None:
+        return "Unknown place"
+    place = places_by_id.get(place_id)
+    if place and place.get("name"):
+        return place["name"]
+    return f"Place {place_id}"
+
+
+def build_travel_list(
+    device_id: str,
+    from_iso: str | None,
+    to_iso: str | None,
+    limit: int = 200,
+) -> list[dict]:
+    ensure_computed(device_id)
+    travels = database.get_travel_segments(
+        device_id=device_id,
+        from_iso=from_iso,
+        to_iso=to_iso,
+        limit=limit,
+    )
+    if not travels:
+        return []
+
+    all_visits = database.get_all_visits(device_id)
+    visits_by_id = {v["id"]: v for v in all_visits}
+    places_by_id = {p["id"]: p for p in database.get_places(device_id)}
+
+    enriched: list[dict] = []
+    for travel in travels:
+        from_visit = visits_by_id.get(travel["from_visit_id"]) if travel.get("from_visit_id") else None
+        to_visit = visits_by_id.get(travel["to_visit_id"]) if travel.get("to_visit_id") else None
+        if from_visit is None or to_visit is None:
+            from_id, to_id = match_adjacent_visit_ids(
+                travel["started_at"],
+                travel["ended_at"],
+                all_visits,
+            )
+            if from_visit is None and from_id is not None:
+                from_visit = visits_by_id.get(from_id)
+            if to_visit is None and to_id is not None:
+                to_visit = visits_by_id.get(to_id)
+
+        enriched.append(
+            {
+                **travel,
+                "from_place_name": _place_name_for_visit(from_visit, places_by_id) or "Unknown",
+                "to_place_name": _place_name_for_visit(to_visit, places_by_id) or "Unknown",
+            }
+        )
+
+    return enriched
 
 
 def build_visits_timeline(

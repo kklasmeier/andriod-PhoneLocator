@@ -558,8 +558,9 @@ def replace_analytics(
         place_coords = [(pid, lat, lon) for pid, lat, lon, _ in new_places]
         assigned_place_ids = assign_visit_place_ids(visits, place_coords)
 
+        inserted_visits: list[dict[str, Any]] = []
         for visit, place_id in zip(visits, assigned_place_ids):
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO visits (
                     device_id, place_id, started_at, ended_at, duration_sec,
@@ -576,17 +577,33 @@ def replace_analytics(
                     visit.center_lon,
                 ),
             )
+            inserted_visits.append(
+                {
+                    "id": cursor.lastrowid,
+                    "started_at": visit.started_at,
+                    "ended_at": visit.ended_at,
+                }
+            )
+
+        from app.analytics.travel_links import match_adjacent_visit_ids
 
         for travel in travels:
+            from_visit_id, to_visit_id = match_adjacent_visit_ids(
+                travel.started_at,
+                travel.ended_at,
+                inserted_visits,
+            )
             conn.execute(
                 """
                 INSERT INTO travel_segments (
                     device_id, from_visit_id, to_visit_id, started_at, ended_at,
                     duration_sec, distance_m, avg_speed_mps
-                ) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     device_id,
+                    from_visit_id,
+                    to_visit_id,
                     travel.started_at,
                     travel.ended_at,
                     travel.duration_sec,
@@ -677,6 +694,19 @@ def get_visits(
             LIMIT ?
             """,
             params,
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_all_visits(device_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM visits
+            WHERE device_id = ?
+            ORDER BY started_at ASC, id ASC
+            """,
+            (device_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 

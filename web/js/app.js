@@ -587,6 +587,8 @@ async function renderTravel() {
     .map(
       (t) => `
       <tr>
+        <td>${escapeHtml(t.from_place_name || "Unknown")}</td>
+        <td>${escapeHtml(t.to_place_name || "Unknown")}</td>
         <td>${formatTime(t.started_at)}</td>
         <td>${formatTime(t.ended_at)}</td>
         <td>${formatDuration(t.duration_sec)}</td>
@@ -605,7 +607,7 @@ async function renderTravel() {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Started</th><th>Ended</th><th>Duration</th><th>Distance</th><th>Avg speed</th></tr></thead>
+        <thead><tr><th>From</th><th>To</th><th>Started</th><th>Ended</th><th>Duration</th><th>Distance</th><th>Avg speed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
