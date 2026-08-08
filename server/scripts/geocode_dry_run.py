@@ -1,35 +1,42 @@
 """Estimate how many reverse-geocode API calls auto-naming would need.
 
+Standalone script — only Python stdlib + sqlite3 (no venv required).
+
 Rules (match planned v1 + presentation):
 - Only unnamed places
-- Place must have at least one visit >= MIN_VISIT_PRESENTATION_SEC (5 min)
-- Group unnamed qualifying places within PLACE_MERGE_RADIUS_M (50 m)
+- Place must have at least one visit >= 5 min
+- Group unnamed qualifying places within 50 m
 - Clusters within 50 m of a manually named place inherit that name (0 geocodes)
 - One Nominatim request per remaining cluster (first run; cache hits thereafter)
 
 Usage on piSensors:
-  cd ~/andriod-PhoneLocator/server
-  PHONE_LOCATOR_DATABASE_PATH=/var/lib/phone-locator/phone-locator.db \\
-    python3 scripts/geocode_dry_run.py --device-id YOUR-DEVICE-UUID
+  python3 scripts/geocode_dry_run.py \\
+    --db /var/lib/phone-locator/phone-locator.db \\
+    --device-id YOUR-DEVICE-UUID
 """
 
 from __future__ import annotations
 
 import argparse
-import os
+import math
+import sqlite3
 import sys
 from pathlib import Path
 
-# Allow running as: python3 scripts/geocode_dry_run.py
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+MIN_VISIT_SEC = 300
+MERGE_RADIUS_M = 50.0
 
-from app.analytics.constants import MIN_VISIT_PRESENTATION_SEC, PLACE_MERGE_RADIUS_M
-from app.analytics.geo import haversine_m
-from app import database
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
 
 
 def _cluster(points: list[dict], radius_m: float) -> list[list[dict]]:
-    """Greedy spatial clustering by center_lat/center_lon."""
     remaining = list(points)
     clusters: list[list[dict]] = []
 
@@ -72,27 +79,60 @@ def _near_any_named(place: dict, named_places: list[dict], radius_m: float) -> b
     return False
 
 
-def analyze(device_id: str) -> dict:
-    database.init_db()
+def _default_db_path() -> str:
+    candidates = [
+        "/var/lib/phone-locator/phone-locator.db",
+        str(Path(__file__).resolve().parents[1] / "data" / "phone-locator.db"),
+    ]
+    for path in candidates:
+        if Path(path).is_file():
+            return path
+    return candidates[0]
 
-    places = database.get_places(device_id)
-    visits = database.get_visits(device_id, limit=100_000)
+
+def analyze(db_path: str, device_id: str) -> dict:
+    if not Path(db_path).is_file():
+        raise FileNotFoundError(f"Database not found: {db_path}")
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    places = [
+        dict(row)
+        for row in conn.execute(
+            "SELECT * FROM places WHERE device_id = ? ORDER BY last_seen_at DESC, id DESC",
+            (device_id,),
+        ).fetchall()
+    ]
+
+    visits = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT * FROM visits
+            WHERE device_id = ?
+            ORDER BY started_at ASC, id ASC
+            """,
+            (device_id,),
+        ).fetchall()
+    ]
+    conn.close()
 
     qualifying_place_ids: set[int] = set()
     for visit in visits:
-        if visit["duration_sec"] >= MIN_VISIT_PRESENTATION_SEC and visit["place_id"] is not None:
+        if visit["duration_sec"] >= MIN_VISIT_SEC and visit["place_id"] is not None:
             qualifying_place_ids.add(visit["place_id"])
 
     named = [p for p in places if p.get("name")]
     unnamed = [p for p in places if not p.get("name")]
     unnamed_qualifying = [p for p in unnamed if p["id"] in qualifying_place_ids]
 
-    clusters = _cluster(unnamed_qualifying, PLACE_MERGE_RADIUS_M)
+    clusters = _cluster(unnamed_qualifying, MERGE_RADIUS_M)
 
     needs_geocode: list[list[dict]] = []
     inherits_name = 0
     for cluster in clusters:
-        if any(_near_any_named(p, named, PLACE_MERGE_RADIUS_M) for p in cluster):
+        if any(_near_any_named(p, named, MERGE_RADIUS_M) for p in cluster):
             inherits_name += len(cluster)
         else:
             needs_geocode.append(cluster)
@@ -102,11 +142,13 @@ def analyze(device_id: str) -> dict:
 
     return {
         "device_id": device_id,
-        "min_visit_sec": MIN_VISIT_PRESENTATION_SEC,
-        "merge_radius_m": PLACE_MERGE_RADIUS_M,
+        "db_path": db_path,
+        "min_visit_sec": MIN_VISIT_SEC,
+        "merge_radius_m": MERGE_RADIUS_M,
         "total_places": len(places),
         "named_places": len(named),
         "unnamed_places": len(unnamed),
+        "named_labels": [p["name"] for p in named],
         "unnamed_with_5min_visit": len(unnamed_qualifying),
         "clusters_after_50m_merge": len(clusters),
         "places_inherit_near_manual_name": inherits_name,
@@ -129,20 +171,31 @@ def analyze(device_id: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dry-run geocode query count for auto-naming")
     parser.add_argument("--device-id", required=True, help="Phone device UUID")
+    parser.add_argument(
+        "--db",
+        default=_default_db_path(),
+        help="Path to phone-locator SQLite database",
+    )
     args = parser.parse_args()
 
-    if not os.environ.get("PHONE_LOCATOR_DATABASE_PATH"):
-        print("Tip: set PHONE_LOCATOR_DATABASE_PATH=/var/lib/phone-locator/phone-locator.db", file=sys.stderr)
-
-    stats = analyze(args.device_id)
+    try:
+        stats = analyze(args.db, args.device_id)
+    except FileNotFoundError as err:
+        print(f"Error: {err}", file=sys.stderr)
+        sys.exit(1)
 
     print("=== Geocode dry run (planned v1 rules) ===")
+    print(f"Database:            {stats['db_path']}")
     print(f"Device:              {stats['device_id']}")
     print(f"Min visit duration:  {stats['min_visit_sec']} sec ({stats['min_visit_sec'] // 60} min)")
     print(f"Merge radius:        {stats['merge_radius_m']} m")
     print()
     print(f"Total place rows:    {stats['total_places']}")
-    print(f"  Already named:     {stats['named_places']}")
+    print(f"  Already named:     {stats['named_places']}", end="")
+    if stats["named_labels"]:
+        print(f" ({', '.join(stats['named_labels'][:5])}" + ("…" if len(stats["named_labels"]) > 5 else "") + ")")
+    else:
+        print()
     print(f"  Unnamed:           {stats['unnamed_places']}")
     print()
     print(f"Unnamed w/ ≥5m stay: {stats['unnamed_with_5min_visit']}")
@@ -158,10 +211,11 @@ def main() -> None:
     if stats["sample_clusters"]:
         print("Top clusters that would be geocoded (lat, lon, place count):")
         for i, c in enumerate(stats["sample_clusters"], 1):
+            ids = c["place_ids"]
+            suffix = "…" if len(ids) > 5 else ""
             print(
                 f"  {i:2}. ({c['lat']}, {c['lon']}) — "
-                f"{c['count']} place row(s), {c['total_visits']} visit(s), ids={c['place_ids'][:5]}"
-                + ("…" if len(c["place_ids"]) > 5 else "")
+                f"{c['count']} place row(s), {c['total_visits']} visit(s), ids={ids[:5]}{suffix}"
             )
 
 
