@@ -3,22 +3,38 @@ package com.klasmeier.phonelocator.ui.status
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,9 +42,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -254,7 +274,7 @@ fun StatusScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
@@ -262,36 +282,42 @@ fun StatusScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusDot(state.health)
-                Column {
-                    Text(
-                        text = TrackingStatus.healthLabel(state.health),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = if (state.trackingPaused) {
-                            "Tracking paused"
-                        } else {
-                            "Collecting every ${state.intervalMinutes} min"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Text("Phone Locator", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
-            OutlinedButton(onClick = onOpenSettings) { Text("Settings") }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            StatCard("Last sent", state.lastSentLabel, Modifier.weight(1f))
-            StatCard("Queue", "${state.queueCount} pending", Modifier.weight(1f))
+        StatusHeroCard(
+            health = state.health,
+            trackingPaused = state.trackingPaused,
+            intervalMinutes = state.intervalMinutes,
+            onOpenDashboard = {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DEFAULT_API_URL)))
+            },
+        )
+
+        QuickActionsRow(
+            syncInProgress = state.syncInProgress,
+            trackingPaused = state.trackingPaused,
+            mapsEnabled = state.latestReading != null,
+            onSync = { viewModel.syncNow() },
+            onTogglePause = { viewModel.togglePause() },
+            onOpenMaps = {
+                state.latestReading?.let { reading ->
+                    val uri = Uri.parse("geo:${reading.latitude},${reading.longitude}?q=${reading.latitude},${reading.longitude}")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                }
+            },
+        )
+
+        state.syncMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            StatCard("Last reading", state.lastReadingLabel, Modifier.weight(1f))
-            StatCard("Upload success (24h)", state.uploadSuccessLabel, Modifier.weight(1f))
-        }
-        StatCard("Service uptime", state.serviceUptimeLabel, Modifier.fillMaxWidth())
 
         if (state.problems.isNotEmpty()) {
             Card(
@@ -307,83 +333,282 @@ fun StatusScreen(
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Current location")
-                val reading = state.latestReading
-                if (reading == null) {
-                    Text("No reading yet")
-                } else {
-                    Text("${reading.latitude}, ${reading.longitude}")
-                    reading.accuracyM?.let { Text("±${it.toInt()} m") }
-                    Text("Battery ${reading.batteryPct ?: "?"}% · ${reading.networkType ?: "unknown"}")
+        DetailsCard(
+            lastSent = state.lastSentLabel,
+            queueCount = state.queueCount,
+            lastReading = state.lastReadingLabel,
+            uploadSuccess = state.uploadSuccessLabel,
+            serviceUptime = state.serviceUptimeLabel,
+            latestReading = state.latestReading,
+            onOpenMaps = {
+                state.latestReading?.let { reading ->
+                    val uri = Uri.parse("geo:${reading.latitude},${reading.longitude}?q=${reading.latitude},${reading.longitude}")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                 }
-                OutlinedButton(
-                    onClick = {
-                        reading?.let {
-                            val uri = Uri.parse("geo:${it.latitude},${it.longitude}?q=${it.latitude},${it.longitude}")
-                            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                        }
-                    },
-                    enabled = reading != null,
-                ) { Text("Open in Google Maps") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun StatusHeroCard(
+    health: TrackingHealth,
+    trackingPaused: Boolean,
+    intervalMinutes: Int,
+    onOpenDashboard: () -> Unit,
+) {
+    val accent = healthAccentColor(health)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = accent.copy(alpha = 0.12f),
+        ),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatusDot(health)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = TrackingStatus.healthLabel(health),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (trackingPaused) {
+                            "Tracking paused"
+                        } else {
+                            "Collecting every $intervalMinutes min"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onOpenDashboard),
+                color = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Open web dashboard",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "Timeline, map, places & travel",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                        )
+                    }
+                    Icon(
+                        Icons.Outlined.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
             }
         }
+    }
+}
 
-        Button(
-            onClick = { viewModel.syncNow() },
-            enabled = !state.syncInProgress,
-            modifier = Modifier.fillMaxWidth(),
+@Composable
+private fun QuickActionsRow(
+    syncInProgress: Boolean,
+    trackingPaused: Boolean,
+    mapsEnabled: Boolean,
+    onSync: () -> Unit,
+    onTogglePause: () -> Unit,
+    onOpenMaps: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        QuickActionTile(
+            label = if (syncInProgress) "Syncing…" else "Sync now",
+            icon = Icons.Default.Sync,
+            onClick = onSync,
+            enabled = !syncInProgress,
+            loading = syncInProgress,
+            modifier = Modifier.weight(1f),
+        )
+        QuickActionTile(
+            label = if (trackingPaused) "Resume" else "Pause",
+            icon = if (trackingPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+            onClick = onTogglePause,
+            modifier = Modifier.weight(1f),
+        )
+        QuickActionTile(
+            label = "Maps",
+            icon = Icons.Default.Map,
+            onClick = onOpenMaps,
+            enabled = mapsEnabled,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun QuickActionTile(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled && !loading, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(if (state.syncInProgress) "Syncing…" else "Sync now")
-        }
-        state.syncMessage?.let { message ->
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    modifier = Modifier.size(22.dp),
+                    tint = if (enabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    },
+                )
+            }
             Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        OutlinedButton(
-            onClick = { viewModel.togglePause() },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (state.trackingPaused) "Resume tracking" else "Pause tracking")
+    }
+}
+
+@Composable
+private fun DetailsCard(
+    lastSent: String,
+    queueCount: Int,
+    lastReading: String,
+    uploadSuccess: String,
+    serviceUptime: String,
+    latestReading: LatestReadingEntity?,
+    onOpenMaps: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 4.dp)) {
+            DetailRow("Last sent", lastSent)
+            DetailRow("Queue", "$queueCount pending")
+            DetailRow("Last reading", lastReading)
+            DetailRow("Upload success (24h)", uploadSuccess)
+            DetailRow("Service uptime", serviceUptime)
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = latestReading != null, onClick = onOpenMaps)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Current location", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    if (latestReading == null) {
+                        Text("No reading yet", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text(
+                            "${latestReading.latitude}, ${latestReading.longitude}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        latestReading.accuracyM?.let {
+                            Text("±${it.toInt()} m", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            "Battery ${latestReading.batteryPct ?: "?"}% · ${latestReading.networkType ?: "unknown"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (latestReading != null) {
+                    Icon(
+                        Icons.Default.Map,
+                        contentDescription = "Open in Maps",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
         }
-        OutlinedButton(
-            onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(DEFAULT_API_URL))
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Open dashboard")
-        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.42f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(0.58f),
+        )
     }
 }
 
 @Composable
 private fun StatusDot(health: TrackingHealth) {
-    val color = when (health) {
-        TrackingHealth.Active -> Color(0xFF4CAF50)
-        TrackingHealth.Syncing -> MaterialTheme.colorScheme.primary
-        TrackingHealth.Paused -> MaterialTheme.colorScheme.outline
-        TrackingHealth.Warning -> Color(0xFFFF9800)
-        TrackingHealth.Error -> MaterialTheme.colorScheme.error
-    }
     Box(
         modifier = Modifier
             .size(14.dp)
-            .background(color, CircleShape),
+            .background(healthAccentColor(health), CircleShape),
     )
 }
 
 @Composable
-private fun StatCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium)
-            Text(value, style = MaterialTheme.typography.bodyMedium)
-        }
-    }
+private fun healthAccentColor(health: TrackingHealth): Color = when (health) {
+    TrackingHealth.Active -> Color(0xFF4CAF50)
+    TrackingHealth.Syncing -> MaterialTheme.colorScheme.primary
+    TrackingHealth.Paused -> MaterialTheme.colorScheme.outline
+    TrackingHealth.Warning -> Color(0xFFFF9800)
+    TrackingHealth.Error -> MaterialTheme.colorScheme.error
 }
