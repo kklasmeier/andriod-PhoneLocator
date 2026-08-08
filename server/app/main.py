@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 
 from app import database
 from app.routes import analytics, dashboard, health, location
@@ -39,6 +40,17 @@ app.include_router(analytics.travel_router)
 app.include_router(analytics.stats_router)
 app.include_router(analytics.settings_router)
 app.include_router(dashboard.router)
+
+
+@app.middleware("http")
+async def cache_control_for_web_assets(request: Request, call_next):
+    """Avoid stale ES module caches on mobile after deploy (mixed old/new js files)."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".js", ".css", ".html")) or path in ("/", "/index.html"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
 
 _web_dir = _web_root()
 if _web_dir is not None:
