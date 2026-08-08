@@ -1,6 +1,32 @@
 let _map = null;
 let _layers = { trail: null, markers: null, accuracy: null };
 
+function waitForLayout() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+export { waitForLayout };
+
+function boundsForCircle(lat, lon, radiusM) {
+  const radius = Math.max(radiusM, 1);
+  const dLat = radius / 111320;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const dLon = radius / (111320 * (Math.abs(cosLat) > 0.01 ? cosLat : 1));
+  return L.latLngBounds([lat - dLat, lon - dLon], [lat + dLat, lon + dLon]);
+}
+
+export function refreshMapSize() {
+  if (!_map) return;
+  const resize = () => {
+    _map.invalidateSize({ pan: false });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(resize));
+  setTimeout(resize, 100);
+  setTimeout(resize, 300);
+}
+
 export function destroyMap() {
   if (_map) {
     _map.remove();
@@ -14,6 +40,9 @@ export function initMap(container, { tall = false } = {}) {
   const el = typeof container === "string" ? document.getElementById(container) : container;
   if (!el) return null;
 
+  el.innerHTML = "";
+  delete el._leaflet_id;
+
   const panel = el.closest(".map-panel");
   if (panel && tall) panel.classList.add("tall");
 
@@ -26,6 +55,8 @@ export function initMap(container, { tall = false } = {}) {
   _layers.trail = L.layerGroup().addTo(_map);
   _layers.markers = L.layerGroup().addTo(_map);
   _layers.accuracy = L.layerGroup().addTo(_map);
+
+  _map.whenReady(() => refreshMapSize());
 
   return _map;
 }
@@ -87,7 +118,7 @@ export function renderTrail(points, latest) {
     _map.setView([39.36, -84.34], 12);
   }
 
-  setTimeout(() => _map.invalidateSize(), 100);
+  refreshMapSize();
 }
 
 export function renderPlace({
@@ -140,13 +171,19 @@ export function renderPlace({
     _layers.accuracy.addLayer(accuracyCircle);
   }
 
-  const bounds = placeCircle.getBounds();
+  const bounds = boundsForCircle(lat, lon, radius);
   bounds.extend([markerLat, markerLon]);
   if (accuracyM > 0) {
-    bounds.extend(L.circle([markerLat, markerLon], { radius: accuracyM }).getBounds());
+    bounds.extend(boundsForCircle(markerLat, markerLon, accuracyM));
   }
-  _map.fitBounds(bounds.pad(0.18));
-  setTimeout(() => _map.invalidateSize(), 100);
+  const padded = bounds.pad(0.18);
+  _map.fitBounds(padded);
+  refreshMapSize();
+  setTimeout(() => {
+    if (!_map) return;
+    _map.invalidateSize({ pan: false });
+    _map.fitBounds(padded);
+  }, 150);
 }
 
 export function fitTrail() {

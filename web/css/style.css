@@ -275,11 +275,17 @@ button:hover { filter: brightness(1.08); }
   height: 260px;
   border-radius: 8px;
   overflow: hidden;
+  background: var(--surface2);
+}
+
+.inline-place-map.leaflet-container {
+  height: 260px;
 }
 
 .place-map-accordion-row td {
-  padding: 0 0.5rem 0.75rem;
+  padding: 0.75rem;
   border-top: none;
+  vertical-align: middle;
 }
 
 .place-map-accordion-row:not(.hidden) td {
@@ -292,7 +298,7 @@ button:hover { filter: brightness(1.08); }
 }
 
 .timeline-map-accordion {
-  padding: 0 0.75rem 0.75rem;
+  padding: 0.75rem;
   background: rgba(59, 130, 246, 0.06);
   border-radius: 0 0 8px 8px;
 }
@@ -436,6 +442,45 @@ tr.place-row-selected td {
 
 .timeline-day-separator:first-child {
   margin-top: 0;
+}
+
+.travel-cards { display: none; }
+
+@media (max-width: 700px) {
+  .travel-table { display: none; }
+  .travel-cards {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .travel-cards .timeline-item {
+    padding: 0.55rem 0.65rem;
+    gap: 0.5rem;
+    grid-template-columns: 52px 1fr 52px;
+  }
+  .travel-cards .timeline-title {
+    font-size: 0.85rem;
+    line-height: 1.25;
+  }
+  .travel-cards .timeline-meta {
+    font-size: 0.75rem;
+  }
+  .travel-cards .timeline-time {
+    font-size: 0.72rem;
+  }
+  .travel-summary.cards {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 0.75rem !important;
+  }
+  .travel-summary .card {
+    padding: 0.5rem 0.6rem;
+  }
+  .travel-summary .card-value {
+    font-size: 1rem;
+  }
+  .travel-summary .card-label {
+    font-size: 0.68rem;
+  }
 }
 
 .table-wrap {

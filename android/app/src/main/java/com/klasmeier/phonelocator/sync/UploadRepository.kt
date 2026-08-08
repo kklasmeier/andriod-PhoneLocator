@@ -72,7 +72,7 @@ class UploadRepository(
         settingsRepository.markCollection(collected.recordedAtEpochMs)
     }
 
-    suspend fun flushQueue(maxBatchSize: Int = 50, logOnSuccess: Boolean = false): UploadResult =
+    suspend fun flushQueue(maxBatchSize: Int = 50, logOnSuccess: Boolean = true): UploadResult =
         withContext(Dispatchers.IO) {
         val settings = settingsRepository.snapshot()
         if (settings.apiToken.isBlank() || settings.apiBaseUrl.isBlank()) {

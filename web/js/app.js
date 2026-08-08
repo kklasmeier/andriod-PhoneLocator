@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
-import { destroyMap, fitTrail, initMap, renderPlace, renderTrail } from "./map.js";
+import { destroyMap, fitTrail, initMap, refreshMapSize, renderPlace, renderTrail, waitForLayout } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import { APP_VERSION } from "./version.js";
 import {
@@ -355,6 +355,9 @@ async function toggleMapAccordion(trigger, accordion, placeData) {
   trigger.classList.add(trigger.matches("tr") ? "place-row-selected" : "selected");
   _openMapAccordion = { accordion, trigger };
 
+  await waitForLayout();
+  if (_openMapAccordion?.accordion !== accordion) return;
+
   const token = ++_openMapAccordionToken;
   initMap(mapEl);
   renderPlace({ lat, lon, name, radiusM });
@@ -379,6 +382,7 @@ async function toggleMapAccordion(trigger, accordion, placeData) {
     accuracyM: precise.accuracyM,
     pinLabel: precise.pinLabel,
   });
+  refreshMapSize();
 }
 
 function wirePlaceMapRow(row, place) {
@@ -600,14 +604,29 @@ async function renderTravel() {
     )
     .join("");
 
+  const cards = segments
+    .map(
+      (t) => `
+      <div class="timeline-item travel">
+        <div class="timeline-time">${formatTimeShort(t.started_at)}</div>
+        <div>
+          <div class="timeline-title">${escapeHtml(t.from_place_name || "Unknown")} → ${escapeHtml(t.to_place_name || "Unknown")}</div>
+          <div class="timeline-meta">${formatDuration(t.duration_sec)} · ${formatDistance(t.distance_m)} · ${formatSpeed(t.avg_speed_mps)}</div>
+        </div>
+        <div class="timeline-time">${formatTimeShort(t.ended_at)}</div>
+      </div>`
+    )
+    .join("");
+
   appEl.innerHTML = `
     <h1 class="page-title">Travel</h1>
-    <div class="cards" style="margin-bottom:1rem">
+    <div class="cards travel-summary" style="margin-bottom:1rem">
       <div class="card"><div class="card-label">Trips</div><div class="card-value">${segments.length}</div></div>
       <div class="card"><div class="card-label">Total time</div><div class="card-value">${formatDuration(totalSec)}</div></div>
       <div class="card"><div class="card-label">Total distance</div><div class="card-value">${formatDistance(totalDist)}</div></div>
     </div>
-    <div class="table-wrap">
+    <div class="travel-cards timeline">${cards}</div>
+    <div class="table-wrap travel-table">
       <table>
         <thead><tr><th>Started</th><th>End</th><th>From</th><th>To</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
         <tbody>${rows}</tbody>
