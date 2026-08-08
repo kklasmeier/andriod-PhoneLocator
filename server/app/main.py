@@ -6,7 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from app import database
-from app.routes import health, location
+from app.routes import analytics, health, location
 
 
 @asynccontextmanager
@@ -23,3 +23,7 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(location.router)
+app.include_router(analytics.places_router)
+app.include_router(analytics.visits_router)
+app.include_router(analytics.travel_router)
+app.include_router(analytics.stats_router)

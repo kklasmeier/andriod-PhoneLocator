@@ -37,6 +37,56 @@ CREATE INDEX IF NOT EXISTS idx_points_device_recorded
     ON location_points(device_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_points_device_received
     ON location_points(device_id, received_at);
+
+CREATE TABLE IF NOT EXISTS places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    name TEXT,
+    center_lat REAL NOT NULL,
+    center_lon REAL NOT NULL,
+    radius_m REAL NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    visit_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_places_device ON places(device_id);
+
+CREATE TABLE IF NOT EXISTS visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    place_id INTEGER,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    duration_sec INTEGER NOT NULL,
+    center_lat REAL NOT NULL,
+    center_lon REAL NOT NULL,
+    FOREIGN KEY (place_id) REFERENCES places(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visits_device_started
+    ON visits(device_id, started_at);
+
+CREATE TABLE IF NOT EXISTS travel_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    from_visit_id INTEGER,
+    to_visit_id INTEGER,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    duration_sec INTEGER NOT NULL,
+    distance_m REAL NOT NULL,
+    avg_speed_mps REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_travel_device_started
+    ON travel_segments(device_id, started_at);
+
+CREATE TABLE IF NOT EXISTS analytics_meta (
+    device_id TEXT PRIMARY KEY,
+    last_computed_at TEXT NOT NULL,
+    last_point_recorded_at TEXT
+);
 """
 
 
@@ -186,3 +236,248 @@ def get_history(
         rows = conn.execute(sql, params).fetchall()
 
     return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows]
+
+
+def get_points_for_analytics(device_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT recorded_at, latitude, longitude, speed_mps
+            FROM location_points
+            WHERE device_id = ?
+            ORDER BY recorded_at ASC, id ASC
+            """,
+            (device_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_latest_point_recorded_at(device_id: str) -> str | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT recorded_at FROM location_points
+            WHERE device_id = ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """,
+            (device_id,),
+        ).fetchone()
+    return row["recorded_at"] if row else None
+
+
+def get_analytics_meta(device_id: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def replace_analytics(
+    device_id: str,
+    visits: list[Any],
+    travels: list[Any],
+    place_drafts: list[Any],
+    last_point_recorded_at: str | None,
+) -> None:
+    from app.analytics.constants import PLACE_CLUSTER_RADIUS_M
+    from app.analytics.engine import assign_visit_place_ids
+    from app.analytics.geo import haversine_m
+
+    received_at = utc_now_iso()
+
+    with get_connection() as conn:
+        existing_places = conn.execute(
+            "SELECT id, name, center_lat, center_lon FROM places WHERE device_id = ?",
+            (device_id,),
+        ).fetchall()
+
+        conn.execute("DELETE FROM travel_segments WHERE device_id = ?", (device_id,))
+        conn.execute("DELETE FROM visits WHERE device_id = ?", (device_id,))
+        conn.execute("DELETE FROM places WHERE device_id = ?", (device_id,))
+
+        new_places: list[tuple[int, float, float, str | None]] = []
+
+        for draft in place_drafts:
+            name: str | None = None
+            for existing in existing_places:
+                if (
+                    haversine_m(
+                        draft.center_lat,
+                        draft.center_lon,
+                        existing["center_lat"],
+                        existing["center_lon"],
+                    )
+                    < PLACE_CLUSTER_RADIUS_M
+                ):
+                    name = existing["name"]
+                    break
+
+            cursor = conn.execute(
+                """
+                INSERT INTO places (
+                    device_id, name, center_lat, center_lon, radius_m,
+                    first_seen_at, last_seen_at, visit_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    device_id,
+                    name,
+                    draft.center_lat,
+                    draft.center_lon,
+                    draft.radius_m,
+                    draft.first_seen_at,
+                    draft.last_seen_at,
+                    draft.visit_count,
+                ),
+            )
+            new_id = cursor.lastrowid
+            new_places.append((new_id, draft.center_lat, draft.center_lon, name))
+
+        place_coords = [(pid, lat, lon) for pid, lat, lon, _ in new_places]
+        assigned_place_ids = assign_visit_place_ids(visits, place_coords)
+
+        for visit, place_id in zip(visits, assigned_place_ids):
+            conn.execute(
+                """
+                INSERT INTO visits (
+                    device_id, place_id, started_at, ended_at, duration_sec,
+                    center_lat, center_lon
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    device_id,
+                    place_id,
+                    visit.started_at,
+                    visit.ended_at,
+                    visit.duration_sec,
+                    visit.center_lat,
+                    visit.center_lon,
+                ),
+            )
+
+        for travel in travels:
+            conn.execute(
+                """
+                INSERT INTO travel_segments (
+                    device_id, from_visit_id, to_visit_id, started_at, ended_at,
+                    duration_sec, distance_m, avg_speed_mps
+                ) VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)
+                """,
+                (
+                    device_id,
+                    travel.started_at,
+                    travel.ended_at,
+                    travel.duration_sec,
+                    travel.distance_m,
+                    travel.avg_speed_mps,
+                ),
+            )
+
+        conn.execute(
+            """
+            INSERT INTO analytics_meta (device_id, last_computed_at, last_point_recorded_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(device_id) DO UPDATE SET
+                last_computed_at = excluded.last_computed_at,
+                last_point_recorded_at = excluded.last_point_recorded_at
+            """,
+            (device_id, received_at, last_point_recorded_at),
+        )
+        conn.commit()
+
+
+def get_places(device_id: str) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM places
+            WHERE device_id = ?
+            ORDER BY last_seen_at DESC, id DESC
+            """,
+            (device_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_place_name(place_id: int, device_id: str, name: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM places WHERE id = ? AND device_id = ?",
+            (place_id, device_id),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE places SET name = ? WHERE id = ? AND device_id = ?",
+            (name, place_id, device_id),
+        )
+        conn.commit()
+        updated = conn.execute(
+            "SELECT * FROM places WHERE id = ?",
+            (place_id,),
+        ).fetchone()
+    return dict(updated) if updated else None
+
+
+def _time_range_clause(
+    from_iso: str | None,
+    to_iso: str | None,
+    column_start: str = "started_at",
+    column_end: str = "ended_at",
+) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if from_iso:
+        clauses.append(f"{column_end} >= ?")
+        params.append(from_iso)
+    if to_iso:
+        clauses.append(f"{column_start} <= ?")
+        params.append(to_iso)
+    if not clauses:
+        return "", []
+    return " AND " + " AND ".join(clauses), params
+
+
+def get_visits(
+    device_id: str,
+    from_iso: str | None = None,
+    to_iso: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    range_sql, range_params = _time_range_clause(from_iso, to_iso)
+    params: list[Any] = [device_id, *range_params, limit]
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM visits
+            WHERE device_id = ?{range_sql}
+            ORDER BY started_at ASC, id ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_travel_segments(
+    device_id: str,
+    from_iso: str | None = None,
+    to_iso: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    range_sql, range_params = _time_range_clause(from_iso, to_iso)
+    params: list[Any] = [device_id, *range_params, limit]
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT * FROM travel_segments
+            WHERE device_id = ?{range_sql}
+            ORDER BY started_at ASC, id ASC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    return [dict(row) for row in rows]

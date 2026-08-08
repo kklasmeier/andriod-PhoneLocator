@@ -1,8 +1,10 @@
 # Phone Locator — Project Design
 
 **Project:** Self-hosted Android phone location tracker  
-**Last updated:** July 26, 2026  
-**Status:** Design — not yet implemented  
+**Last updated:** August 7, 2026  
+**Status:** Phases **1–2, 4 complete**; Phase **3 deferred** (VPN-only remote access); Phases **5–9** not started  
+
+**Revision notes (Aug 7):** Phase 4 app dashboard — status health indicators, 24h upload success %, service uptime, problem banners, activity log clear, settings permissions/advanced. Phase 3 public HTTPS deferred — remote access via WireGuard VPN and LAN API URL. Phases 1–2 shipped and verified on piSensors + Android.  
 
 **Revision notes (Jul 26):** piSensors port audit; multi-site HTTPS via nginx; phone stores queue + summaries only (full history on server); web dashboard IA and layout; API backend port 8003; Android app IA (lean, collection-first); resizable Glance home screen widget; **Phase 8 — known Wi-Fi places** (SSID → learned location, skip GPS at home).  
 
@@ -847,15 +849,15 @@ Rough expectation: **meaningful savings during long stationary home periods** (o
 
 ### Android build order
 
-| Step | Deliverable |
-|------|-------------|
-| A1 | Project scaffold, Room, Retrofit, permissions |
-| A2 | Foreground service + collection + upload queue |
-| A3 | Setup wizard + Settings |
-| A4 | Status screen + notification |
-| A5 | Activity log |
-| A6 | Today screen (API cache) |
-| A7 | Resizable home screen widget |
+| Step | Status | Deliverable |
+|------|--------|-------------|
+| A1 | ✅ | Project scaffold, Room, Retrofit, permissions |
+| A2 | ✅ | Foreground service + collection + upload queue |
+| A3 | ✅ | Setup wizard + Settings |
+| A4 | ✅ | Status screen + notification |
+| A5 | ✅ | Activity log |
+| A6 | ⬜ | Today screen (API cache) |
+| A7 | ⬜ | Resizable home screen widget |
 
 ### 9.10 Home screen widget
 
@@ -1543,42 +1545,62 @@ Tech stack aligned with existing projects:
 
 ## 16. Build phases
 
-Execute in order. Do not skip Phase 1–3 before exposing to the internet.
+Execute in order. Phases 1–2 are complete. Phase 3 (public HTTPS) is deferred; remote access uses WireGuard VPN.
 
-| Phase | Name | Deliverable |
-|-------|------|-------------|
-| **1** | API + DB | FastAPI on piSensors, SQLite schema, batch ingest, token auth, `recorded_at` + `received_at` |
-| **2** | Android MVP | Foreground service, collect location + telemetry, local queue, batch upload, setup screen |
-| **3** | HTTPS + port forward | Router forward 443, certbot/Let's Encrypt on piSensors, phone uses production URL |
-| **4** | App dashboard | Send stats, queue depth, errors, uptime, pause reasons |
-| **5** | Analytics | Place/visit/travel segmentation on server; summary API |
-| **6** | Web dashboard | Map, trail, timeline, places, reports, health panel, export |
-| **7** | Polish | Adaptive interval, place naming, purge UI, multi-device support |
-| **8** | Known Wi-Fi places | Learn SSID → location on phone; skip GPS when on known Wi-Fi (e.g. ZNet at home) |
-| **9** | QR pairing | Server shows setup QR (URL + token); phone scans to fill setup — no typing |
+| Phase | Name | Status | Deliverable |
+|-------|------|--------|-------------|
+| **1** | API + DB | ✅ **Done** | FastAPI on piSensors, SQLite schema, batch ingest, token auth, `recorded_at` + `received_at` |
+| **2** | Android MVP | ✅ **Done** | Foreground service, collect location + telemetry, local queue, batch upload, setup screen |
+| **3** | HTTPS + port forward | ⏸ **Deferred** | Public HTTPS deferred; remote access via WireGuard VPN + LAN URL on phone |
+| **4** | App dashboard | ✅ **Done** | Status health states, 24h upload %, uptime, problem banners, activity log, settings |
+| **5** | Analytics | ✅ **Done** | Place/visit/travel segmentation on server; summary API |
+| **6** | Web dashboard | ⬜ Not started | Map, trail, timeline, places, reports, health panel, export |
+| **7** | Polish | ⬜ Not started | Adaptive interval, place naming, purge UI, multi-device support |
+| **8** | Known Wi-Fi places | ⬜ Not started | Learn SSID → location on phone; skip GPS when on known Wi-Fi (e.g. ZNet at home) |
+| **9** | QR pairing | ⬜ Not started | Server shows setup QR (URL + token); phone scans to fill setup — no typing |
 
-### Phase 1 acceptance criteria
+### Phase 1 acceptance criteria ✅
 
-- [ ] `POST /api/v1/location/batch` accepts points, sets `received_at`, dedupes on `client_point_id`
-- [ ] `GET /api/v1/location/latest` returns most recent point
-- [ ] Invalid token returns 401
-- [ ] SQLite file persists across service restart
-- [ ] Deploy script installs and starts systemd service on piSensors
+- [x] `POST /api/v1/location/batch` accepts points, sets `received_at`, dedupes on `client_point_id`
+- [x] `GET /api/v1/location/latest` returns most recent point
+- [x] Invalid token returns 401
+- [x] SQLite file persists across service restart
+- [x] Deploy script installs and starts systemd service on piSensors
 
-### Phase 2 acceptance criteria
+### Phase 2 acceptance criteria ✅
 
-- [ ] App collects location every ~3 min with foreground service
-- [ ] Points written to local queue before upload attempt
-- [ ] Successful upload clears queue entries
-- [ ] Failed upload retains queue; retries on next cycle
-- [ ] App survives reboot (boot receiver)
-- [ ] Setup screen saves URL + token
+- [x] App collects location every ~3 min with foreground service
+- [x] Points written to local queue before upload attempt
+- [x] Successful upload clears queue entries
+- [x] Failed upload retains queue; retries on next cycle
+- [x] App survives reboot (boot receiver)
+- [x] Setup screen saves URL + token
 
-### Phase 3 acceptance criteria
+### Phase 3 acceptance criteria ⏸ deferred
+
+Public HTTPS via Nighthawk port forwarding was not completed. **Interim:** WireGuard VPN + `http://192.168.1.26:8000/locator` on the phone.
 
 - [ ] `https://kklasmei.mooo.com/api/v1/health` responds from outside home network
 - [ ] Valid TLS certificate (no browser/app warnings)
 - [ ] Cert auto-renewal configured
+
+### Phase 4 acceptance criteria ✅
+
+- [x] Status screen shows health state (active / syncing / paused / warning / error)
+- [x] Queue depth and last sent / last reading visible on Status screen
+- [x] Rolling 24h upload success rate from local activity log
+- [x] Service uptime shown while tracking service is running
+- [x] Problem banners for permissions, battery optimization, and stopped service
+- [x] Activity log lists send/fail/service events with clear and refresh
+- [x] Settings shows permission status, battery optimization, queue size, clear log
+
+### Phase 5 acceptance criteria ✅
+
+- [x] Server segments location history into visits and travel (100 m / 1 m/s thresholds)
+- [x] Visit centroids clustered into `places`; user can rename via `PUT /api/v1/places/{id}`
+- [x] `GET /api/v1/places`, `/visits`, `/travel`, `/stats/summary` (period=today|week)
+- [x] Analytics recomputed on demand when new points arrive
+- [x] Named places preserved across recompute when cluster overlaps
 
 ### Phase 8 acceptance criteria *(draft — align before build)*
 
@@ -1605,8 +1627,8 @@ Execute in order. Do not skip Phase 1–3 before exposing to the internet.
 
 | # | Item | Notes |
 |---|------|-------|
-| O1 | Port 443 on router | Forward external 443 → piSensors 443; piSensors port 443 is free (Jul 26 audit) |
-| O2 | nginx integration | Add `/locator/` to existing `pivpngateway` config on :8000; FastAPI on `127.0.0.1:8003` |
+| O1 | Port 443 on router | **Deferred** (Phase 3) — VPN-only for now |
+| O2 | nginx integration | ✅ Done — `/locator/` on `pivpngateway` :8000; FastAPI on `127.0.0.1:8003` |
 | O8 | Port 8000 | **In use** — share via path routing; do not bind a second listener on 8000 |
 | O3 | Web dashboard access | LAN-only vs public with auth — lean LAN + VPN |
 | O4 | Multiple phones | Schema supports `device_id`; v1 may ship with one device |
@@ -1625,13 +1647,14 @@ Execute in order. Do not skip Phase 1–3 before exposing to the internet.
 | API host | piSensors (`192.168.1.26`) |
 | API backend port | `127.0.0.1:8003` (new; localhost only) |
 | LAN URL | `http://192.168.1.26:8000/locator/` |
-| Public URL | `https://kklasmei.mooo.com` |
-| Port 8000 on piSensors | In use (gateway, cameras) — add `/locator/` path |
-| Port 443 on piSensors | Free — multi-site HTTPS via nginx `server_name` |
+| Remote access | WireGuard VPN (UDP 51822 → piGateway); same LAN URL on phone |
+| Public URL | `https://kklasmei.mooo.com` *(Phase 3 — deferred)* |
+| Port 8000 on piSensors | In use (gateway, cameras) — `/locator/` path added ✅ |
+| Port 443 on piSensors | Free — multi-site HTTPS via nginx `server_name` *(not configured)* |
 | DDNS | afraid.org → `kklasmei.mooo.com` → `74.215.40.180` |
 | Upload interval | ~3 minutes |
 | Auth | Bearer token |
-| TLS | Let's Encrypt (free) |
+| TLS | Let's Encrypt *(Phase 3 — deferred)* |
 | Database | SQLite on piSensors |
 | Retention | Forever; manual purge only |
 | Timestamps | `recorded_at` (phone), `received_at` (server) |
