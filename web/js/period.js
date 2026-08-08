@@ -34,6 +34,12 @@ function startOfDay(date) {
   return d;
 }
 
+function endOfDay(date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 function isSameDay(a, b) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -60,6 +66,10 @@ function weekStartSunday(date) {
 
 function monthStart(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function yearStart(date) {
+  return new Date(date.getFullYear(), 0, 1);
 }
 
 function formatMonthDay(date, includeYear = false) {
@@ -107,41 +117,61 @@ export function formatPeriodLabel(granularity, anchor) {
     return formatWeekRange(start, end);
   }
 
-  if (anchor.getFullYear() === currentYear) {
-    return anchor.toLocaleDateString("en-US", { month: "long" });
+  if (granularity === "month") {
+    if (anchor.getFullYear() === currentYear) {
+      return anchor.toLocaleDateString("en-US", { month: "long" });
+    }
+    return anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }
-  return anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  if (granularity === "year") {
+    return String(anchor.getFullYear());
+  }
+
+  return formatDayLabel(anchor);
 }
 
 export function localDateKey(iso) {
   return formatAnchorDate(new Date(iso));
 }
 
-function computeRange(granularity, anchor) {
+function periodBounds(granularity, anchor) {
   const now = new Date();
   const today = startOfDay(now);
 
   if (granularity === "day") {
     const start = startOfDay(anchor);
-    const end = isToday(anchor)
-      ? now
-      : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
-    return { from: start.toISOString(), to: end.toISOString() };
+    const end = isToday(anchor) ? now : endOfDay(anchor);
+    return { start, end };
   }
 
   if (granularity === "week") {
     const start = weekStartSunday(anchor);
     const weekEnd = new Date(start);
     weekEnd.setDate(weekEnd.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
-    const end =
-      start.getTime() === weekStartSunday(today).getTime() ? now : weekEnd;
-    return { from: start.toISOString(), to: end.toISOString() };
+    const end = isSameDay(start, weekStartSunday(today)) ? now : endOfDay(weekEnd);
+    return { start, end };
   }
 
-  const start = monthStart(anchor);
-  const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59, 59, 999);
-  const end = start.getTime() === monthStart(today).getTime() ? now : monthEnd;
+  if (granularity === "month") {
+    const start = monthStart(anchor);
+    const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+    const end = start.getTime() === monthStart(today).getTime() ? now : endOfDay(monthEnd);
+    return { start, end };
+  }
+
+  if (granularity === "year") {
+    const start = yearStart(anchor);
+    const yearEnd = new Date(anchor.getFullYear(), 11, 31);
+    const end = start.getFullYear() === today.getFullYear() ? now : endOfDay(yearEnd);
+    return { start, end };
+  }
+
+  return { start: startOfDay(anchor), end: now };
+}
+
+function computeRange(granularity, anchor) {
+  const { start, end } = periodBounds(granularity, anchor);
   return { from: start.toISOString(), to: end.toISOString() };
 }
 
@@ -154,7 +184,13 @@ function canGoForward(granularity, anchor) {
   if (granularity === "week") {
     return weekStartSunday(anchor) < weekStartSunday(today);
   }
-  return monthStart(anchor) < monthStart(today);
+  if (granularity === "month") {
+    return monthStart(anchor) < monthStart(today);
+  }
+  if (granularity === "year") {
+    return yearStart(anchor) < yearStart(today);
+  }
+  return false;
 }
 
 function stepAnchor(granularity, anchor, direction) {
@@ -163,8 +199,10 @@ function stepAnchor(granularity, anchor, direction) {
     d.setDate(d.getDate() + direction);
   } else if (granularity === "week") {
     d.setDate(d.getDate() + direction * 7);
-  } else {
+  } else if (granularity === "month") {
     d.setMonth(d.getMonth() + direction);
+  } else if (granularity === "year") {
+    d.setFullYear(d.getFullYear() + direction);
   }
   return startOfDay(d);
 }
@@ -176,6 +214,7 @@ function persist() {
 }
 
 function visitsLimit() {
+  if (state.granularity === "year") return 2000;
   if (state.granularity === "month") return 500;
   if (state.granularity === "week") return 300;
   return 200;

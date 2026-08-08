@@ -126,6 +126,7 @@ a:hover { text-decoration: underline; }
 
 .period-granularity {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.2rem;
   margin-left: 0.25rem;
 }

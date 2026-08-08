@@ -602,12 +602,12 @@ def _time_range_clause(
     from_iso: str | None,
     to_iso: str | None,
     column_start: str = "started_at",
-    column_end: str = "ended_at",
 ) -> tuple[str, list[Any]]:
+    """Filter segments whose start time falls within the range (calendar-period strict)."""
     clauses: list[str] = []
     params: list[Any] = []
     if from_iso:
-        clauses.append(f"{column_end} >= ?")
+        clauses.append(f"{column_start} >= ?")
         params.append(from_iso)
     if to_iso:
         clauses.append(f"{column_start} <= ?")
