@@ -269,6 +269,67 @@ button:hover { filter: brightness(1.08); }
 
 .map-panel.tall { min-height: calc(100vh - 160px); }
 
+.map-panel.place-detail {
+  min-height: 0;
+  margin-bottom: 1rem;
+}
+
+.place-detail-map {
+  height: 300px;
+}
+
+.place-map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.place-map-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.place-map-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.page-hint {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+tr.place-row-clickable {
+  cursor: pointer;
+}
+
+tr.place-row-clickable:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+tr.place-row-selected td {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.timeline-item.visit-item {
+  cursor: pointer;
+}
+
+.timeline-item.visit-item:hover {
+  filter: brightness(1.05);
+}
+
+.timeline-item.selected {
+  outline: 1px solid var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
 .map-container {
   width: 100%;
   height: 420px;

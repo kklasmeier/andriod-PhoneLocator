@@ -1,5 +1,5 @@
 import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
-import { destroyMap, fitTrail, initMap, renderTrail } from "./map.js";
+import { destroyMap, fitTrail, initMap, renderPlace, renderTrail } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import { APP_VERSION } from "./version.js";
 import {
@@ -229,16 +229,64 @@ async function renderMapPage() {
   renderTrail(history.points || [], dash.latest);
 }
 
+function placeMapPanelHtml() {
+  return `
+    <div id="place-map-panel" class="map-panel place-detail hidden">
+      <div class="place-map-header">
+        <div>
+          <div class="place-map-label">Selected place</div>
+          <div id="place-map-title" class="place-map-title"></div>
+        </div>
+        <button type="button" class="secondary" id="close-place-map">Close</button>
+      </div>
+      <div id="place-detail-map" class="map-container place-detail-map"></div>
+    </div>`;
+}
+
+function showPlaceMap({ lat, lon, name, radiusM = 50 }) {
+  const panel = document.getElementById("place-map-panel");
+  const title = document.getElementById("place-map-title");
+  if (!panel || lat == null || lon == null) return;
+
+  panel.classList.remove("hidden");
+  if (title) {
+    title.textContent = `${name || "Place"} · ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  }
+
+  initMap("place-detail-map");
+  renderPlace({ lat, lon, name, radiusM });
+  document.getElementById("close-place-map")?.addEventListener("click", () => {
+    panel.classList.add("hidden");
+    destroyMap();
+  }, { once: true });
+}
+
+function wirePlaceMapRow(row, place) {
+  row.classList.add("place-row-clickable");
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button, input, .inline-rename")) return;
+    document.querySelectorAll(".place-row-selected").forEach((el) => el.classList.remove("place-row-selected"));
+    row.classList.add("place-row-selected");
+    showPlaceMap({
+      lat: place.center_lat,
+      lon: place.center_lon,
+      name: place.name || `Place ${place.id}`,
+      radiusM: place.radius_m,
+    });
+  });
+}
+
 async function renderTimeline() {
   setActiveNav("/timeline");
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading timeline…</div>`;
 
   const range = getRange();
-  const items = await apiGet(
-    "/api/v1/visits",
-    deviceParams({ from: range.from, to: range.to, limit: range.visitsLimit })
-  );
+  const [items, placesData] = await Promise.all([
+    apiGet("/api/v1/visits", deviceParams({ from: range.from, to: range.to, limit: range.visitsLimit })),
+    apiGet("/api/v1/places", deviceParams()),
+  ]);
+  const placeById = Object.fromEntries((placesData.places || []).map((p) => [p.id, p]));
 
   if (!items.items?.length) {
     appEl.innerHTML = `<h1 class="page-title">Timeline</h1><div class="empty">No visits or travel in this period</div>`;
@@ -267,18 +315,42 @@ async function renderTimeline() {
           </div>`;
       }
       return `${separator}
-        <div class="timeline-item">
+        <div class="timeline-item visit-item" data-place-id="${item.place_id ?? ""}" data-lat="${item.center_lat}" data-lon="${item.center_lon}">
           <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
           <div>
             <div class="timeline-title">${escapeHtml(item.place_name || "Unknown place")}</div>
-            <div class="timeline-meta">${formatDuration(item.duration_sec)}</div>
+            <div class="timeline-meta">${formatDuration(item.duration_sec)} · tap to show map</div>
           </div>
           <div class="timeline-time">${formatTimeShort(item.ended_at)}</div>
         </div>`;
     })
     .join("");
 
-  appEl.innerHTML = `<h1 class="page-title">Timeline</h1><div class="timeline">${rows}</div>`;
+  appEl.innerHTML = `
+    <h1 class="page-title">Timeline</h1>
+    ${placeMapPanelHtml()}
+    <div class="timeline">${rows}</div>`;
+
+  appEl.querySelectorAll(".timeline-item.visit-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const lat = Number(el.dataset.lat);
+      const lon = Number(el.dataset.lon);
+      const placeId = Number(el.dataset.placeId);
+      const place = placeById[placeId];
+      const name = el.querySelector(".timeline-title")?.textContent || "Place";
+
+      document.querySelectorAll(".timeline-item.selected").forEach((item) => item.classList.remove("selected"));
+      el.classList.add("selected");
+
+      showPlaceMap({
+        lat,
+        lon,
+        name,
+        radiusM: place?.radius_m ?? 50,
+      });
+      document.getElementById("place-map-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  });
 }
 
 async function renderPlaces() {
@@ -297,7 +369,7 @@ async function renderPlaces() {
   const rows = places
     .map(
       (p) => `
-      <tr data-place-id="${p.id}">
+      <tr data-place-id="${p.id}" class="place-row-clickable">
         <td>
           <span class="place-name">${escapeHtml(p.name || `Place ${p.id}`)}</span>
           <div class="inline-rename hidden">
@@ -315,6 +387,8 @@ async function renderPlaces() {
 
   appEl.innerHTML = `
     <h1 class="page-title">Places <span style="color:var(--muted);font-size:0.9rem">(${places.length})</span></h1>
+    ${placeMapPanelHtml()}
+    <p class="page-hint">Click a place row to show it on the map.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Name</th><th>Visits</th><th>Last visit</th><th>Center</th><th></th></tr></thead>
@@ -322,6 +396,11 @@ async function renderPlaces() {
       </table>
     </div>
   `;
+
+  places.forEach((place) => {
+    const row = appEl.querySelector(`tr[data-place-id="${place.id}"]`);
+    if (row) wirePlaceMapRow(row, place);
+  });
 
   appEl.querySelectorAll(".rename-btn").forEach((btn) => {
     btn.addEventListener("click", () => {

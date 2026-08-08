@@ -90,6 +90,34 @@ export function renderTrail(points, latest) {
   setTimeout(() => _map.invalidateSize(), 100);
 }
 
+export function renderPlace({ lat, lon, name, radiusM = 50 }) {
+  if (!_map) return;
+
+  _layers.trail.clearLayers();
+  _layers.markers.clearLayers();
+  _layers.accuracy.clearLayers();
+
+  const marker = L.marker([lat, lon]);
+  const safeName = String(name || "Place").replace(/[<>&"]/g, (ch) => (
+    { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[ch]
+  ));
+  marker.bindPopup(`<strong>${safeName}</strong>`);
+  _layers.markers.addLayer(marker);
+
+  const radius = radiusM > 0 ? radiusM : 50;
+  const circle = L.circle([lat, lon], {
+    radius,
+    color: "#3b82f6",
+    fillColor: "#3b82f6",
+    fillOpacity: 0.15,
+    weight: 2,
+  });
+  _layers.accuracy.addLayer(circle);
+
+  _map.setView([lat, lon], 16);
+  setTimeout(() => _map.invalidateSize(), 100);
+}
+
 export function fitTrail() {
   if (!_map || !_layers.trail.getLayers().length) return;
   const group = L.featureGroup(_layers.trail.getLayers());
