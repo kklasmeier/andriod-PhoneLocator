@@ -1,4 +1,6 @@
 let _map = null;
+let _mapGeneration = 0;
+let _resizeTimers = [];
 let _layers = { trail: null, markers: null, accuracy: null };
 
 function waitForLayout() {
@@ -19,15 +21,20 @@ function boundsForCircle(lat, lon, radiusM) {
 
 export function refreshMapSize() {
   if (!_map) return;
+  const gen = _mapGeneration;
   const resize = () => {
+    if (!_map || gen !== _mapGeneration) return;
     _map.invalidateSize({ pan: false });
   };
   requestAnimationFrame(() => requestAnimationFrame(resize));
-  setTimeout(resize, 100);
-  setTimeout(resize, 300);
+  _resizeTimers.push(setTimeout(resize, 100));
+  _resizeTimers.push(setTimeout(resize, 300));
 }
 
 export function destroyMap() {
+  _mapGeneration += 1;
+  _resizeTimers.forEach(clearTimeout);
+  _resizeTimers = [];
   if (_map) {
     _map.remove();
     _map = null;
@@ -56,7 +63,10 @@ export function initMap(container, { tall = false } = {}) {
   _layers.markers = L.layerGroup().addTo(_map);
   _layers.accuracy = L.layerGroup().addTo(_map);
 
-  _map.whenReady(() => refreshMapSize());
+  const gen = _mapGeneration;
+  _map.whenReady(() => {
+    if (gen === _mapGeneration) refreshMapSize();
+  });
 
   return _map;
 }
