@@ -90,31 +90,62 @@ export function renderTrail(points, latest) {
   setTimeout(() => _map.invalidateSize(), 100);
 }
 
-export function renderPlace({ lat, lon, name, radiusM = 50 }) {
+export function renderPlace({
+  lat,
+  lon,
+  name,
+  radiusM = 50,
+  pinLat,
+  pinLon,
+  accuracyM,
+  pinLabel,
+}) {
   if (!_map) return;
 
   _layers.trail.clearLayers();
   _layers.markers.clearLayers();
   _layers.accuracy.clearLayers();
 
-  const marker = L.marker([lat, lon]);
+  const markerLat = pinLat ?? lat;
+  const markerLon = pinLon ?? lon;
   const safeName = String(name || "Place").replace(/[<>&"]/g, (ch) => (
     { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[ch]
   ));
-  marker.bindPopup(`<strong>${safeName}</strong>`);
-  _layers.markers.addLayer(marker);
+  const safePinLabel = String(pinLabel || safeName).replace(/[<>&"]/g, (ch) => (
+    { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[ch]
+  ));
 
   const radius = radiusM > 0 ? radiusM : 50;
-  const circle = L.circle([lat, lon], {
+  const placeCircle = L.circle([lat, lon], {
     radius,
     color: "#3b82f6",
     fillColor: "#3b82f6",
     fillOpacity: 0.15,
     weight: 2,
   });
-  _layers.accuracy.addLayer(circle);
+  _layers.accuracy.addLayer(placeCircle);
 
-  _map.setView([lat, lon], 16);
+  const marker = L.marker([markerLat, markerLon]);
+  marker.bindPopup(`<strong>${safePinLabel}</strong>`);
+  _layers.markers.addLayer(marker);
+
+  if (accuracyM > 0) {
+    const accuracyCircle = L.circle([markerLat, markerLon], {
+      radius: accuracyM,
+      color: "#22c55e",
+      fillColor: "#22c55e",
+      fillOpacity: 0.12,
+      weight: 1,
+    });
+    _layers.accuracy.addLayer(accuracyCircle);
+  }
+
+  const bounds = placeCircle.getBounds();
+  bounds.extend([markerLat, markerLon]);
+  if (accuracyM > 0) {
+    bounds.extend(L.circle([markerLat, markerLon], { radius: accuracyM }).getBounds());
+  }
+  _map.fitBounds(bounds.pad(0.18));
   setTimeout(() => _map.invalidateSize(), 100);
 }
 

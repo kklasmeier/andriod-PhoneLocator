@@ -77,3 +77,18 @@ export function escapeHtml(text) {
 export function maxDuration(items, key = "duration_sec") {
   return items.reduce((max, item) => Math.max(max, item[key] || 0), 1);
 }
+
+export function haversineM(lat1, lon1, lat2, lon2) {
+  const earthRadiusM = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function isNearM(lat, lon, centerLat, centerLon, radiusM) {
+  return haversineM(lat, lon, centerLat, centerLon) <= radiusM;
+}

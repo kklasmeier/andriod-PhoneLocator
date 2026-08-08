@@ -10,6 +10,7 @@ import {
   formatSpeed,
   formatTime,
   formatTimeShort,
+  isNearM,
   maxDuration,
   relativeTime,
 } from "./utils.js";
@@ -237,10 +238,92 @@ function closeMapAccordion() {
   accordion.classList.add("hidden");
   trigger?.classList.remove("place-row-selected", "selected");
   _openMapAccordion = null;
+  _openMapAccordionToken += 1;
   destroyMap();
 }
 
-function toggleMapAccordion(trigger, accordion, { lat, lon, name, radiusM = 50 }) {
+let _openMapAccordionToken = 0;
+
+async function resolvePrecisePin({
+  lat,
+  lon,
+  radiusM = 50,
+  startedAt,
+  endedAt,
+  lastSeenAt,
+}) {
+  const fallback = { pinLat: lat, pinLon: lon, accuracyM: null, pinLabel: null };
+
+  try {
+    const latest = await apiGet("/api/v1/location/latest", deviceParams());
+    if (
+      latest?.latitude != null &&
+      latest?.longitude != null &&
+      isNearM(latest.latitude, latest.longitude, lat, lon, radiusM)
+    ) {
+      return {
+        pinLat: latest.latitude,
+        pinLon: latest.longitude,
+        accuracyM: latest.accuracy_m ?? null,
+        pinLabel: "Current phone location",
+      };
+    }
+  } catch {
+    // fall through to history lookup
+  }
+
+  if (startedAt && endedAt) {
+    try {
+      const history = await apiGet("/api/v1/location/history", deviceParams({
+        from: startedAt,
+        to: endedAt,
+        limit: 500,
+      }));
+      const points = history.points || [];
+      if (points.length > 0) {
+        const last = points[points.length - 1];
+        return {
+          pinLat: last.latitude,
+          pinLon: last.longitude,
+          accuracyM: last.accuracy_m ?? null,
+          pinLabel: "Last reading this visit",
+        };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  if (lastSeenAt) {
+    try {
+      const from = new Date(new Date(lastSeenAt).getTime() - 6 * 3600 * 1000).toISOString();
+      const history = await apiGet("/api/v1/location/history", deviceParams({
+        from,
+        to: lastSeenAt,
+        limit: 500,
+      }));
+      const points = (history.points || []).filter((p) =>
+        isNearM(p.latitude, p.longitude, lat, lon, radiusM * 1.5)
+      );
+      if (points.length > 0) {
+        const last = points[points.length - 1];
+        return {
+          pinLat: last.latitude,
+          pinLon: last.longitude,
+          accuracyM: last.accuracy_m ?? null,
+          pinLabel: "Last reading here",
+        };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return fallback;
+}
+
+async function toggleMapAccordion(trigger, accordion, placeData) {
+  const { lat, lon, name, radiusM = 50, startedAt, endedAt, lastSeenAt } = placeData;
   if (lat == null || lon == null) return;
 
   if (_openMapAccordion?.accordion === accordion) {
@@ -257,8 +340,30 @@ function toggleMapAccordion(trigger, accordion, { lat, lon, name, radiusM = 50 }
   trigger.classList.add(trigger.matches("tr") ? "place-row-selected" : "selected");
   _openMapAccordion = { accordion, trigger };
 
+  const token = ++_openMapAccordionToken;
   initMap(mapEl);
   renderPlace({ lat, lon, name, radiusM });
+
+  const precise = await resolvePrecisePin({
+    lat,
+    lon,
+    radiusM,
+    startedAt,
+    endedAt,
+    lastSeenAt,
+  });
+  if (token !== _openMapAccordionToken || _openMapAccordion?.accordion !== accordion) return;
+
+  renderPlace({
+    lat,
+    lon,
+    name,
+    radiusM,
+    pinLat: precise.pinLat,
+    pinLon: precise.pinLon,
+    accuracyM: precise.accuracyM,
+    pinLabel: precise.pinLabel,
+  });
 }
 
 function wirePlaceMapRow(row, place) {
@@ -273,6 +378,7 @@ function wirePlaceMapRow(row, place) {
       lon: place.center_lon,
       name: place.name || `Place ${place.id}`,
       radiusM: place.radius_m,
+      lastSeenAt: place.last_seen_at,
     });
   });
 }
@@ -319,7 +425,7 @@ async function renderTimeline() {
       }
       return `${separator}
         <div class="timeline-visit-group">
-          <div class="timeline-item visit-item" data-visit-index="${index}" data-place-id="${item.place_id ?? ""}" data-lat="${item.center_lat}" data-lon="${item.center_lon}">
+          <div class="timeline-item visit-item" data-visit-index="${index}" data-place-id="${item.place_id ?? ""}" data-lat="${item.center_lat}" data-lon="${item.center_lon}" data-started-at="${item.started_at}" data-ended-at="${item.ended_at}">
             <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
             <div>
               <div class="timeline-title">${escapeHtml(item.place_name || "Unknown place")}</div>
@@ -354,6 +460,8 @@ async function renderTimeline() {
         lon,
         name,
         radiusM: place?.radius_m ?? 50,
+        startedAt: el.dataset.startedAt,
+        endedAt: el.dataset.endedAt,
       });
     });
   });
