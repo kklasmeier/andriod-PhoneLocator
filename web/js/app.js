@@ -573,7 +573,9 @@ async function renderTravel() {
     "/api/v1/travel",
     deviceParams({ from: range.from, to: range.to, limit: range.visitsLimit })
   );
-  const segments = data.segments || [];
+  const segments = [...(data.segments || [])].sort(
+    (a, b) => new Date(b.started_at) - new Date(a.started_at)
+  );
 
   if (!segments.length) {
     appEl.innerHTML = `<h1 class="page-title">Travel</h1><div class="empty">No travel segments in this period</div>`;
@@ -587,10 +589,10 @@ async function renderTravel() {
     .map(
       (t) => `
       <tr>
-        <td>${escapeHtml(t.from_place_name || "Unknown")}</td>
-        <td>${escapeHtml(t.to_place_name || "Unknown")}</td>
         <td>${formatTime(t.started_at)}</td>
         <td>${formatTime(t.ended_at)}</td>
+        <td>${escapeHtml(t.from_place_name || "Unknown")}</td>
+        <td>${escapeHtml(t.to_place_name || "Unknown")}</td>
         <td>${formatDuration(t.duration_sec)}</td>
         <td>${formatDistance(t.distance_m)}</td>
         <td>${formatSpeed(t.avg_speed_mps)}</td>
@@ -607,7 +609,7 @@ async function renderTravel() {
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>From</th><th>To</th><th>Started</th><th>Ended</th><th>Duration</th><th>Distance</th><th>Avg speed</th></tr></thead>
+        <thead><tr><th>Started</th><th>End</th><th>From</th><th>To</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
