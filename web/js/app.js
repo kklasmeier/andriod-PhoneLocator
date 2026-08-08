@@ -229,45 +229,46 @@ async function renderMapPage() {
   renderTrail(history.points || [], dash.latest);
 }
 
-function placeMapPanelHtml() {
-  return `
-    <div id="place-map-panel" class="map-panel place-detail hidden">
-      <div class="place-map-header">
-        <div>
-          <div class="place-map-label">Selected place</div>
-          <div id="place-map-title" class="place-map-title"></div>
-        </div>
-        <button type="button" class="secondary" id="close-place-map">Close</button>
-      </div>
-      <div id="place-detail-map" class="map-container place-detail-map"></div>
-    </div>`;
+let _openMapAccordion = null;
+
+function closeMapAccordion() {
+  if (!_openMapAccordion) return;
+  const { accordion, trigger } = _openMapAccordion;
+  accordion.classList.add("hidden");
+  trigger?.classList.remove("place-row-selected", "selected");
+  _openMapAccordion = null;
+  destroyMap();
 }
 
-function showPlaceMap({ lat, lon, name, radiusM = 50 }) {
-  const panel = document.getElementById("place-map-panel");
-  const title = document.getElementById("place-map-title");
-  if (!panel || lat == null || lon == null) return;
+function toggleMapAccordion(trigger, accordion, { lat, lon, name, radiusM = 50 }) {
+  if (lat == null || lon == null) return;
 
-  panel.classList.remove("hidden");
-  if (title) {
-    title.textContent = `${name || "Place"} · ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  if (_openMapAccordion?.accordion === accordion) {
+    closeMapAccordion();
+    return;
   }
 
-  initMap("place-detail-map");
+  closeMapAccordion();
+
+  const mapEl = accordion.querySelector(".inline-place-map");
+  if (!mapEl) return;
+
+  accordion.classList.remove("hidden");
+  trigger.classList.add(trigger.matches("tr") ? "place-row-selected" : "selected");
+  _openMapAccordion = { accordion, trigger };
+
+  initMap(mapEl);
   renderPlace({ lat, lon, name, radiusM });
-  document.getElementById("close-place-map")?.addEventListener("click", () => {
-    panel.classList.add("hidden");
-    destroyMap();
-  }, { once: true });
 }
 
 function wirePlaceMapRow(row, place) {
+  const accordion = row.nextElementSibling;
+  if (!accordion?.classList.contains("place-map-accordion-row")) return;
+
   row.classList.add("place-row-clickable");
   row.addEventListener("click", (event) => {
     if (event.target.closest("button, input, .inline-rename")) return;
-    document.querySelectorAll(".place-row-selected").forEach((el) => el.classList.remove("place-row-selected"));
-    row.classList.add("place-row-selected");
-    showPlaceMap({
+    toggleMapAccordion(row, accordion, {
       lat: place.center_lat,
       lon: place.center_lon,
       name: place.name || `Place ${place.id}`,
@@ -279,6 +280,8 @@ function wirePlaceMapRow(row, place) {
 async function renderTimeline() {
   setActiveNav("/timeline");
   setBanner(null);
+  _openMapAccordion = null;
+  destroyMap();
   appEl.innerHTML = `<div class="loading">Loading timeline…</div>`;
 
   const range = getRange();
@@ -295,7 +298,7 @@ async function renderTimeline() {
 
   let lastDay = null;
   const rows = items.items
-    .map((item) => {
+    .map((item, index) => {
       const dayKey = localDateKey(item.started_at);
       let separator = "";
       if (dayKey !== lastDay) {
@@ -315,23 +318,30 @@ async function renderTimeline() {
           </div>`;
       }
       return `${separator}
-        <div class="timeline-item visit-item" data-place-id="${item.place_id ?? ""}" data-lat="${item.center_lat}" data-lon="${item.center_lon}">
-          <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
-          <div>
-            <div class="timeline-title">${escapeHtml(item.place_name || "Unknown place")}</div>
-            <div class="timeline-meta">${formatDuration(item.duration_sec)} · tap to show map</div>
+        <div class="timeline-visit-group">
+          <div class="timeline-item visit-item" data-visit-index="${index}" data-place-id="${item.place_id ?? ""}" data-lat="${item.center_lat}" data-lon="${item.center_lon}">
+            <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
+            <div>
+              <div class="timeline-title">${escapeHtml(item.place_name || "Unknown place")}</div>
+              <div class="timeline-meta">${formatDuration(item.duration_sec)} · tap to toggle map</div>
+            </div>
+            <div class="timeline-time">${formatTimeShort(item.ended_at)}</div>
           </div>
-          <div class="timeline-time">${formatTimeShort(item.ended_at)}</div>
+          <div class="timeline-map-accordion hidden" data-for-visit="${index}">
+            <div class="inline-place-map"></div>
+          </div>
         </div>`;
     })
     .join("");
 
   appEl.innerHTML = `
     <h1 class="page-title">Timeline</h1>
-    ${placeMapPanelHtml()}
     <div class="timeline">${rows}</div>`;
 
   appEl.querySelectorAll(".timeline-item.visit-item").forEach((el) => {
+    const accordion = el.nextElementSibling;
+    if (!accordion?.classList.contains("timeline-map-accordion")) return;
+
     el.addEventListener("click", () => {
       const lat = Number(el.dataset.lat);
       const lon = Number(el.dataset.lon);
@@ -339,16 +349,12 @@ async function renderTimeline() {
       const place = placeById[placeId];
       const name = el.querySelector(".timeline-title")?.textContent || "Place";
 
-      document.querySelectorAll(".timeline-item.selected").forEach((item) => item.classList.remove("selected"));
-      el.classList.add("selected");
-
-      showPlaceMap({
+      toggleMapAccordion(el, accordion, {
         lat,
         lon,
         name,
         radiusM: place?.radius_m ?? 50,
       });
-      document.getElementById("place-map-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   });
 }
@@ -356,6 +362,8 @@ async function renderTimeline() {
 async function renderPlaces() {
   setActiveNav("/places");
   setBanner(null);
+  _openMapAccordion = null;
+  destroyMap();
   appEl.innerHTML = `<div class="loading">Loading places…</div>`;
 
   const data = await apiGet("/api/v1/places", deviceParams());
@@ -381,14 +389,18 @@ async function renderPlaces() {
         <td>${formatTime(p.last_seen_at)}</td>
         <td>${p.center_lat.toFixed(5)}, ${p.center_lon.toFixed(5)}</td>
         <td><button type="button" class="secondary rename-btn">Rename</button></td>
+      </tr>
+      <tr class="place-map-accordion-row hidden" data-for-place="${p.id}">
+        <td colspan="5">
+          <div class="inline-place-map"></div>
+        </td>
       </tr>`
     )
     .join("");
 
   appEl.innerHTML = `
     <h1 class="page-title">Places <span style="color:var(--muted);font-size:0.9rem">(${places.length})</span></h1>
-    ${placeMapPanelHtml()}
-    <p class="page-hint">Click a place row to show it on the map.</p>
+    <p class="page-hint">Click a place row to expand a map below it. Click again to collapse.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Name</th><th>Visits</th><th>Last visit</th><th>Center</th><th></th></tr></thead>

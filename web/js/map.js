@@ -9,15 +9,15 @@ export function destroyMap() {
   }
 }
 
-export function initMap(containerId, { tall = false } = {}) {
+export function initMap(container, { tall = false } = {}) {
   destroyMap();
-  const el = document.getElementById(containerId);
+  const el = typeof container === "string" ? document.getElementById(container) : container;
   if (!el) return null;
 
   const panel = el.closest(".map-panel");
   if (panel && tall) panel.classList.add("tall");
 
-  _map = L.map(containerId, { zoomControl: true });
+  _map = L.map(el, { zoomControl: true });
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap",
     maxZoom: 19,
