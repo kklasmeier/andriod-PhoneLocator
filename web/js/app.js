@@ -1,6 +1,7 @@
 import { apiGet, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
 import { destroyMap, fitTrail, initMap, renderTrail } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
+import { APP_VERSION } from "./version.js";
 import {
   escapeHtml,
   formatDaySeparator,
@@ -15,6 +16,20 @@ import {
 
 const appEl = document.getElementById("app");
 const bannerEl = document.getElementById("banner");
+const footerEl = document.getElementById("site-footer");
+
+function setFooter(text) {
+  if (footerEl) footerEl.textContent = text;
+}
+
+function setFooterStatus(extra = "") {
+  const tokenOk = getToken() ? "token ✓" : "no token";
+  const deviceOk = getDeviceId() ? "device ✓" : "no device";
+  const suffix = extra ? ` · ${extra}` : "";
+  setFooter(`Phone Locator v${APP_VERSION} · ${tokenOk} · ${deviceOk}${suffix}`);
+}
+
+setFooter(`Phone Locator v${APP_VERSION} · starting…`);
 
 initPeriodBar(() => navigate());
 
@@ -503,72 +518,52 @@ const routes = {
 
 function parseRoute() {
   const raw = window.location.hash.replace(/^#/, "");
-  if (!raw) return { route: "/", sync: true };
+  if (!raw) return "/";
 
   const path = raw.split("?")[0];
-  if (!path || path === "/setup") return { route: "/", sync: path === "/setup" };
+  if (!path || path === "/setup") return "/";
 
-  const route = routes[path] ? path : "/";
-  return { route, sync: route !== path };
+  return routes[path] ? path : "/";
 }
 
-let navigating = false;
-let navigateAgain = false;
+function normalizeRouteHash(route) {
+  const desired = `#${route}`;
+  const current = window.location.hash.split("?")[0];
+  if (current !== desired) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${desired}`);
+  }
+}
 
 async function navigate() {
-  if (navigating) {
-    navigateAgain = true;
-    return;
-  }
-  navigating = true;
-
   try {
     consumeSetupParams();
-
-    const { route, sync } = parseRoute();
-    const desiredHash = `#${route}`;
-    if (sync && window.location.hash !== desiredHash) {
-      window.location.hash = desiredHash;
-      return;
-    }
-
+    const route = parseRoute();
+    normalizeRouteHash(route);
     destroyMap();
 
     if (!getToken() && route !== "/settings") {
       setActiveNav("/settings");
       appEl.innerHTML = `<div class="empty">Configure API token and device ID in <a href="#/settings">Settings</a></div>`;
+      setFooterStatus("needs setup");
       return;
     }
 
     try {
       await routes[route]();
+      setFooterStatus(route);
     } catch (err) {
       showError(err);
+      setFooterStatus(`error on ${route}`);
     }
-  } finally {
-    navigating = false;
-    if (navigateAgain) {
-      navigateAgain = false;
-      navigate();
-    }
+  } catch (err) {
+    showError(err);
+    setFooterStatus("navigation error");
   }
 }
-
-window.addEventListener("error", (event) => {
-  if (!appEl.innerHTML.trim()) {
-    showError(new Error(event.message || "Failed to load dashboard"));
-  }
-});
-
-window.addEventListener("unhandledrejection", (event) => {
-  if (!appEl.innerHTML.trim()) {
-    showError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
-  }
-});
 
 window.addEventListener("hashchange", navigate);
 
 if (!window.location.hash || window.location.hash === "#") {
-  window.location.replace(`${window.location.pathname}${window.location.search}#/`);
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/`);
 }
 navigate();

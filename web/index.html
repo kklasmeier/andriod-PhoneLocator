@@ -39,8 +39,41 @@
   </header>
 
   <div id="banner" class="banner hidden"></div>
-  <main id="app" class="app"></main>
+  <main id="app" class="app">
+    <div class="loading" id="boot-status">Loading…</div>
+  </main>
+  <footer id="site-footer" class="site-footer">Phone Locator · loading…</footer>
 
+  <script>
+    (function () {
+      var footer = document.getElementById("site-footer");
+      var app = document.getElementById("app");
+      function showBootError(message) {
+        if (app && (!app.innerHTML || app.innerHTML.indexOf("boot-status") !== -1)) {
+          app.innerHTML =
+            '<div class="empty"><p><strong>Dashboard failed to start</strong></p><p>' +
+            message +
+            '</p><p>Add <code>?debug=1</code> to the URL for a mobile console.</p></div>';
+        }
+        if (footer) footer.textContent = "Boot error: " + message;
+      }
+      window.addEventListener("error", function (e) {
+        showBootError(e.message || "Unknown script error");
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        var reason = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+        showBootError(reason);
+      });
+      if (location.search.indexOf("debug=1") !== -1) {
+        var s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/eruda";
+        s.onload = function () {
+          eruda.init();
+        };
+        document.body.appendChild(s);
+      }
+    })();
+  </script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>

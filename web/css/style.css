@@ -490,3 +490,15 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   padding: 0.25rem 0.4rem;
   font-size: 0.82rem;
 }
+
+.site-footer {
+  padding: 0.65rem 1.25rem 1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.site-footer code {
+  font-size: 0.72rem;
+}
