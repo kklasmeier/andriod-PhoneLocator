@@ -2,14 +2,37 @@ const STORAGE_TOKEN = "phoneLocator.token";
 const STORAGE_DEVICE = "phoneLocator.deviceId";
 const STORAGE_API_BASE = "phoneLocator.apiBase";
 
-export function apiBase() {
-  const stored = localStorage.getItem(STORAGE_API_BASE);
-  if (stored) return stored.replace(/\/$/, "");
+function pathFromLocation() {
   const path = window.location.pathname.replace(/\/$/, "");
   if (path.endsWith("/index.html")) {
-    return path.slice(0, -"/index.html".length);
+    return path.slice(0, -"/index.html".length) || "";
   }
-  return path || "";
+  return path;
+}
+
+function resolveApiBase() {
+  const stored = (localStorage.getItem(STORAGE_API_BASE) || "").trim().replace(/\/$/, "");
+  const fromPage = pathFromLocation();
+
+  if (!stored) return fromPage;
+
+  // Always prefer a relative base so another device uses its own host/port.
+  if (stored.startsWith("/")) return stored;
+
+  try {
+    const parsed = new URL(stored);
+    if (parsed.origin === window.location.origin) {
+      return parsed.pathname.replace(/\/$/, "") || fromPage;
+    }
+  } catch {
+    // ignore invalid stored value
+  }
+
+  return fromPage;
+}
+
+export function apiBase() {
+  return resolveApiBase();
 }
 
 export function getToken() {
@@ -23,14 +46,15 @@ export function getDeviceId() {
 export function saveSettings({ token, deviceId, apiBase: base }) {
   if (token !== undefined) localStorage.setItem(STORAGE_TOKEN, token.trim());
   if (deviceId !== undefined) localStorage.setItem(STORAGE_DEVICE, deviceId.trim());
-  if (base !== undefined) localStorage.setItem(STORAGE_API_BASE, base.trim());
+  if (base !== undefined) {
+    const trimmed = base.trim().replace(/\/$/, "");
+    if (trimmed) localStorage.setItem(STORAGE_API_BASE, trimmed);
+    else localStorage.removeItem(STORAGE_API_BASE);
+  }
 }
 
 function dashboardPath() {
-  const path = window.location.pathname.replace(/\/$/, "");
-  if (path.endsWith("/index.html")) {
-    return path.slice(0, -"/index.html".length) || "/";
-  }
+  const path = pathFromLocation();
   return path || "/";
 }
 
@@ -42,9 +66,6 @@ export function buildSetupUrl() {
   const params = new URLSearchParams();
   params.set("token", token);
   params.set("device", deviceId);
-
-  const storedBase = localStorage.getItem(STORAGE_API_BASE);
-  if (storedBase) params.set("apiBase", storedBase);
 
   return `${window.location.origin}${dashboardPath()}/#/setup?${params.toString()}`;
 }
@@ -66,7 +87,7 @@ export function consumeSetupParams() {
   saveSettings({
     token,
     deviceId: device,
-    apiBase: params.get("apiBase") || "",
+    apiBase: "",
   });
 
   const cleanPath = window.location.pathname + window.location.search;
@@ -74,18 +95,39 @@ export function consumeSetupParams() {
   return true;
 }
 
-export async function apiGet(path, params = {}) {
-  const token = getToken();
-  if (!token) throw new Error("API token not configured — open Settings");
-
-  const url = new URL(apiBase() + path, window.location.origin);
+function buildApiUrl(path, params = {}) {
+  const base = apiBase();
+  const url = new URL(`${base}${path}`, window.location.origin);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, value);
     }
   });
+  return url;
+}
 
-  const response = await fetch(url.toString(), {
+async function request(url, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  try {
+    return await fetch(url.toString(), { ...options, signal: controller.signal });
+  } catch (err) {
+    const reason = err?.name === "AbortError" ? "timed out" : err?.message || "network error";
+    throw new Error(
+      `Cannot reach API (${reason}). Check VPN/Wi‑Fi, iOS Local Network access for Safari, then Settings → Test connection.`
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function apiGet(path, params = {}) {
+  const token = getToken();
+  if (!token) throw new Error("API token not configured — open Settings");
+
+  const url = buildApiUrl(path, params);
+  const response = await request(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -103,14 +145,8 @@ export async function apiPut(path, body, params = {}) {
   const token = getToken();
   if (!token) throw new Error("API token not configured — open Settings");
 
-  const url = new URL(apiBase() + path, window.location.origin);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, value);
-    }
-  });
-
-  const response = await fetch(url.toString(), {
+  const url = buildApiUrl(path, params);
+  const response = await request(url, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,

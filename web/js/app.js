@@ -36,10 +36,17 @@ function setActiveNav(route) {
 
 function showError(err) {
   const msg = err?.message || String(err);
+  setBanner(null);
   if (msg.includes("Settings")) {
     appEl.innerHTML = `<div class="empty">${escapeHtml(msg)}<br/><br/><a href="#/settings">Open Settings</a></div>`;
   } else {
-    appEl.innerHTML = `<div class="empty">Error: ${escapeHtml(msg)}</div>`;
+    appEl.innerHTML = `
+      <div class="empty">
+        <p><strong>Could not load this page</strong></p>
+        <p>${escapeHtml(msg)}</p>
+        <p style="margin-top:1rem"><a href="#/settings">Open Settings</a> · <button type="button" id="retry-load">Retry</button></p>
+      </div>`;
+    document.getElementById("retry-load")?.addEventListener("click", () => navigate());
   }
 }
 
@@ -494,25 +501,74 @@ const routes = {
   "/settings": renderSettings,
 };
 
-async function navigate() {
-  consumeSetupParams();
-  destroyMap();
-  const hash = window.location.hash.replace(/^#/, "") || "/";
-  const route = routes[hash] ? hash : "/";
-  window.location.hash = `#${route}`;
+function parseRoute() {
+  const raw = window.location.hash.replace(/^#/, "");
+  if (!raw) return { route: "/", sync: true };
 
-  if (!getToken() && route !== "/settings") {
-    setActiveNav("/settings");
-    appEl.innerHTML = `<div class="empty">Configure API token and device ID in <a href="#/settings">Settings</a></div>`;
+  const path = raw.split("?")[0];
+  if (!path || path === "/setup") return { route: "/", sync: path === "/setup" };
+
+  const route = routes[path] ? path : "/";
+  return { route, sync: route !== path };
+}
+
+let navigating = false;
+let navigateAgain = false;
+
+async function navigate() {
+  if (navigating) {
+    navigateAgain = true;
     return;
   }
+  navigating = true;
 
   try {
-    await routes[route]();
-  } catch (err) {
-    showError(err);
+    consumeSetupParams();
+
+    const { route, sync } = parseRoute();
+    const desiredHash = `#${route}`;
+    if (sync && window.location.hash !== desiredHash) {
+      window.location.hash = desiredHash;
+      return;
+    }
+
+    destroyMap();
+
+    if (!getToken() && route !== "/settings") {
+      setActiveNav("/settings");
+      appEl.innerHTML = `<div class="empty">Configure API token and device ID in <a href="#/settings">Settings</a></div>`;
+      return;
+    }
+
+    try {
+      await routes[route]();
+    } catch (err) {
+      showError(err);
+    }
+  } finally {
+    navigating = false;
+    if (navigateAgain) {
+      navigateAgain = false;
+      navigate();
+    }
   }
 }
 
+window.addEventListener("error", (event) => {
+  if (!appEl.innerHTML.trim()) {
+    showError(new Error(event.message || "Failed to load dashboard"));
+  }
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (!appEl.innerHTML.trim()) {
+    showError(event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
+  }
+});
+
 window.addEventListener("hashchange", navigate);
+
+if (!window.location.hash || window.location.hash === "#") {
+  window.location.replace(`${window.location.pathname}${window.location.search}#/`);
+}
 navigate();

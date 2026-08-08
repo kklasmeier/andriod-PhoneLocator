@@ -240,12 +240,13 @@ button:hover { filter: brightness(1.08); }
 }
 
 .map-panel.home {
-  min-height: min(65vh, calc(100vh - 300px));
+  min-height: 480px;
+  min-height: max(480px, 55vh);
 }
 
 .map-panel.home .map-container {
-  height: min(65vh, calc(100vh - 300px));
-  min-height: 480px;
+  height: 480px;
+  height: max(480px, 55vh);
 }
 
 .home-places .bar-row {
