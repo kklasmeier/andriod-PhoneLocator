@@ -1,6 +1,12 @@
 # Add these location blocks inside the port-8000 server {} in
 # /etc/nginx/sites-available/pivpngateway (before the default location /).
 
+    location = /favicon.ico {
+        proxy_pass http://127.0.0.1:8003/favicon.ico;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
     location /locator/ {
         proxy_pass http://127.0.0.1:8003/;
         proxy_http_version 1.1;
