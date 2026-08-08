@@ -1554,7 +1554,7 @@ Execute in order. Phases 1–2 are complete. Phase 3 (public HTTPS) is deferred;
 | **3** | HTTPS + port forward | ⏸ **Deferred** | Public HTTPS deferred; remote access via WireGuard VPN + LAN URL on phone |
 | **4** | App dashboard | ✅ **Done** | Status health states, 24h upload %, uptime, problem banners, activity log, settings |
 | **5** | Analytics | ✅ **Done** | Place/visit/travel segmentation on server; summary API |
-| **6** | Web dashboard | ⬜ Not started | Map, trail, timeline, places, reports, health panel, export |
+| **6** | Web dashboard | ✅ **Done** | Home, map, timeline, places, travel, history, settings (LAN via `/locator/`) |
 | **7** | Polish | ⬜ Not started | Adaptive interval, place naming, purge UI, multi-device support |
 | **8** | Known Wi-Fi places | ⬜ Not started | Learn SSID → location on phone; skip GPS when on known Wi-Fi (e.g. ZNet at home) |
 | **9** | QR pairing | ⬜ Not started | Server shows setup QR (URL + token); phone scans to fill setup — no typing |
@@ -1601,6 +1601,18 @@ Public HTTPS via Nighthawk port forwarding was not completed. **Interim:** WireG
 - [x] `GET /api/v1/places`, `/visits`, `/travel`, `/stats/summary` (period=today|week)
 - [x] Analytics recomputed on demand when new points arrive
 - [x] Named places preserved across recompute when cluster overlaps
+
+### Phase 6 acceptance criteria ✅
+
+- [x] Web UI at `http://192.168.1.26:8000/locator/` (served by FastAPI static + nginx)
+- [x] Home dashboard — status cards, map with trail, top places
+- [x] Map page — full-screen trail with latest pin and accuracy circle
+- [x] Timeline — visits and travel segments for selected period
+- [x] Places — list, sort by visits, rename in UI
+- [x] Travel — segment table with duration/distance/speed
+- [x] History — point browser with CSV export
+- [x] Settings — API token, device ID, connection test
+- [ ] Reports hub, health panel, purge UI *(deferred to Phase 7 polish)*
 
 ### Phase 8 acceptance criteria *(draft — align before build)*
 

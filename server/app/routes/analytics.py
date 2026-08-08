@@ -52,7 +52,7 @@ def list_visits(
     _: Annotated[None, Depends(verify_api_token)],
     from_value: Annotated[str | None, Query(alias="from")] = None,
     to_value: Annotated[str | None, Query(alias="to")] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> VisitsTimelineResponse:
     from_iso, to_iso = resolve_range(from_value, to_value)
     items = analytics_service.build_visits_timeline(
@@ -88,7 +88,7 @@ def list_travel(
 def stats_summary(
     device_id: Annotated[str, Query(min_length=1, max_length=128)],
     _: Annotated[None, Depends(verify_api_token)],
-    period: Annotated[Literal["today", "week"], Query()] = "today",
+    period: Annotated[Literal["today", "yesterday", "week", "month"], Query()] = "today",
 ) -> StatsSummaryResponse:
     data = analytics_service.build_summary(device_id=device_id, period=period)
     return StatsSummaryResponse(**data)

@@ -167,3 +167,16 @@ class StatsSummaryResponse(BaseModel):
     week_teaser: WeekTeaser | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class DashboardResponse(BaseModel):
+    device_id: str
+    period: str
+    from_: str = Field(alias="from")
+    to: str
+    latest: LocationPointOut | None
+    stale_minutes: int | None
+    status: str
+    summary: StatsSummaryResponse
+
+    model_config = {"populate_by_name": True}

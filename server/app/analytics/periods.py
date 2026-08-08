@@ -22,8 +22,11 @@ def to_utc_iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+SUPPORTED_PERIODS = ("today", "yesterday", "week", "month")
+
+
 def resolve_period(period: str, now: datetime | None = None) -> tuple[str, str]:
-    """Return (from_iso, to_iso) in UTC for period=today|week."""
+    """Return (from_iso, to_iso) in UTC for a named period preset."""
     tz = _local_tz()
     if now is None:
         now = datetime.now(tz)
@@ -35,10 +38,17 @@ def resolve_period(period: str, now: datetime | None = None) -> tuple[str, str]:
     if period == "today":
         start_local = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_local = now
+    elif period == "yesterday":
+        yesterday = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_local = yesterday
+        end_local = yesterday.replace(hour=23, minute=59, second=59)
     elif period == "week":
         start_local = (now - timedelta(days=now.weekday())).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
+        end_local = now
+    elif period == "month":
+        start_local = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_local = now
     else:
         raise ValueError(f"unsupported period: {period}")
@@ -55,7 +65,7 @@ def resolve_range(
     from_iso: str | None
     to_iso: str | None
 
-    if from_value in ("today", "week"):
+    if from_value in SUPPORTED_PERIODS:
         from_iso, to_iso = resolve_period(from_value, now=now)
     elif from_value:
         from_iso = to_utc_iso(parse_iso(from_value))
