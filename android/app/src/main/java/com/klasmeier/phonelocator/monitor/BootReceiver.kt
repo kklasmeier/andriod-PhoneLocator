@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.klasmeier.phonelocator.data.SettingsRepository
+import com.klasmeier.phonelocator.sync.UploadRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -18,6 +19,7 @@ class BootReceiver : BroadcastReceiver() {
                 val settings = SettingsRepository(context).snapshot()
                 val configured = SettingsRepository(context).isConfigured.first()
                 if (configured && !settings.trackingPaused) {
+                    UploadRepository.logService(context, "Boot restart")
                     TrackingController.start(context)
                 }
             } finally {

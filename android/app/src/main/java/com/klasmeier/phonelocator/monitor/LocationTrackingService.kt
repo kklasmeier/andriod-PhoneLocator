@@ -6,6 +6,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import com.klasmeier.phonelocator.BuildConfig
+import com.klasmeier.phonelocator.data.ServiceStateRepository
 import com.klasmeier.phonelocator.data.SettingsRepository
 import com.klasmeier.phonelocator.location.LocationCollector
 import com.klasmeier.phonelocator.notification.TrackingNotificationHelper
@@ -66,14 +67,12 @@ class LocationTrackingService : Service() {
     private fun startLoopIfNeeded() {
         if (loopJob != null) return
         loopJob = scope.launch {
+            ServiceStateRepository(this@LocationTrackingService).markServiceStarted()
             UploadRepository.logService(this@LocationTrackingService, "Service started")
             while (isActive) {
                 val settings = settingsRepository.snapshot()
                 if (!settings.setupComplete || settings.trackingPaused) {
-                    notificationHelper.updateFromState(
-                        uploadRepository.queueCount(),
-                        paused = settings.trackingPaused,
-                    )
+                    uploadRepository.refreshNotification()
                     delay(5_000)
                     continue
                 }
@@ -92,14 +91,12 @@ class LocationTrackingService : Service() {
             }
         }
         uploadRepository.flushQueue()
-        val queue = uploadRepository.queueCount()
-        val paused = settingsRepository.snapshot().trackingPaused
-        notificationHelper.updateFromState(queue, paused = paused)
     }
 
     override fun onDestroy() {
         scope.launch {
             UploadRepository.logService(this@LocationTrackingService, "Service stopped")
+            ServiceStateRepository(this@LocationTrackingService).markServiceStopped()
         }
         loopJob?.cancel()
         scope.cancel()

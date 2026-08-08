@@ -84,10 +84,7 @@ private fun PhoneLocatorAppRoot() {
                         onOpenSettings = { showSettings = true },
                         modifier = Modifier.padding(padding),
                     )
-                    else -> LogScreen(
-                        onBack = { selectedTab = 0 },
-                        modifier = Modifier.padding(padding),
-                    )
+                    else -> LogScreen(modifier = Modifier.padding(padding))
                 }
             }
         }

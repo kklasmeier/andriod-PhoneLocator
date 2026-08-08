@@ -27,6 +27,9 @@ interface UploadQueueDao {
     @Query("SELECT COUNT(*) FROM upload_queue")
     suspend fun count(): Int
 
+    @Query("SELECT MIN(createdAtEpochMs) FROM upload_queue")
+    suspend fun oldestCreatedEpochMs(): Long?
+
     @Query("DELETE FROM upload_queue WHERE clientPointId IN (:ids)")
     suspend fun deleteByIds(ids: List<String>)
 
@@ -49,6 +52,12 @@ interface ActivityLogDao {
 
     @Query("SELECT * FROM activity_log ORDER BY timestampEpochMs DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<ActivityLogEntity>
+
+    @Query("SELECT * FROM activity_log WHERE timestampEpochMs >= :sinceEpochMs ORDER BY timestampEpochMs DESC")
+    suspend fun since(sinceEpochMs: Long): List<ActivityLogEntity>
+
+    @Query("DELETE FROM activity_log")
+    suspend fun clearAll()
 
     @Query("DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY timestampEpochMs DESC LIMIT :keep)")
     suspend fun trim(keep: Int)

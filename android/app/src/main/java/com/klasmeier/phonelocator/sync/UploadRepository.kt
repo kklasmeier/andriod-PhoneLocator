@@ -33,6 +33,11 @@ data class ManualSyncResult(
     val message: String,
 )
 
+data class QueueSnapshot(
+    val count: Int,
+    val oldestQueuedEpochMs: Long?,
+)
+
 class UploadRepository(
     context: Context,
     private val database: AppDatabase = AppDatabase.get(context),
@@ -67,7 +72,7 @@ class UploadRepository(
         settingsRepository.markCollection(collected.recordedAtEpochMs)
     }
 
-    suspend fun flushQueue(maxBatchSize: Int = 50, logOnSuccess: Boolean = true): UploadResult =
+    suspend fun flushQueue(maxBatchSize: Int = 50, logOnSuccess: Boolean = false): UploadResult =
         withContext(Dispatchers.IO) {
         val settings = settingsRepository.snapshot()
         if (settings.apiToken.isBlank() || settings.apiBaseUrl.isBlank()) {
@@ -117,13 +122,13 @@ class UploadRepository(
                 log("error", response.errors.first())
             }
             val remaining = database.uploadQueueDao().count()
-            TrackingNotificationHelper(appContext).updateFromState(remaining)
+            updateNotification(remaining)
             UploadResult(response.accepted, response.duplicates, remaining)
         } catch (exc: Exception) {
             database.uploadQueueDao().incrementAttempts(pending.map { it.clientPointId })
-            log("error", "Failed — ${exc.message ?: "upload error"}")
+            logUploadFailureIfBacklog(exc.message ?: "upload error")
             val remaining = database.uploadQueueDao().count()
-            TrackingNotificationHelper(appContext).updateFromState(remaining, error = true)
+            updateNotification(remaining)
             UploadResult(0, 0, remaining)
         }
     }
@@ -147,10 +152,7 @@ class UploadRepository(
                 else -> "Manual sync: could not get location"
             }
             log(if (sent > 0) "success" else "error", message)
-            TrackingNotificationHelper(appContext).updateFromState(
-                upload.remainingQueue,
-                error = sent == 0 && queuedBefore > 0,
-            )
+            updateNotification(upload.remainingQueue)
             return@withContext ManualSyncResult(collected = false, upload = upload, message = message)
         }
 
@@ -173,12 +175,31 @@ class UploadRepository(
         api.health().status
     }
 
+    suspend fun refreshNotification() = withContext(Dispatchers.IO) {
+        updateNotification(database.uploadQueueDao().count())
+    }
+
     suspend fun queueCount(): Int = withContext(Dispatchers.IO) {
         database.uploadQueueDao().count()
     }
 
+    suspend fun queueSnapshot(): QueueSnapshot = withContext(Dispatchers.IO) {
+        QueueSnapshot(
+            count = database.uploadQueueDao().count(),
+            oldestQueuedEpochMs = database.uploadQueueDao().oldestCreatedEpochMs(),
+        )
+    }
+
     suspend fun recentLogs(limit: Int = 50): List<ActivityLogEntity> = withContext(Dispatchers.IO) {
         database.activityLogDao().recent(limit)
+    }
+
+    suspend fun logsSince(sinceEpochMs: Long): List<ActivityLogEntity> = withContext(Dispatchers.IO) {
+        database.activityLogDao().since(sinceEpochMs)
+    }
+
+    suspend fun clearActivityLog() = withContext(Dispatchers.IO) {
+        database.activityLogDao().clearAll()
     }
 
     private suspend fun log(level: String, message: String) {
@@ -190,6 +211,30 @@ class UploadRepository(
             ),
         )
         database.activityLogDao().trim(100)
+    }
+
+    private suspend fun logUploadFailureIfBacklog(message: String) {
+        val snapshot = queueSnapshot()
+        val settings = settingsRepository.snapshot()
+        val backlog = com.klasmeier.phonelocator.ops.TrackingStatus.isUploadBacklogAlert(
+            snapshot.count,
+            settings.lastSuccessfulUploadEpochMs,
+            snapshot.oldestQueuedEpochMs,
+        )
+        if (backlog) {
+            log("error", "Failed — $message")
+        }
+    }
+
+    private suspend fun updateNotification(queueCount: Int) {
+        val settings = settingsRepository.snapshot()
+        val oldest = database.uploadQueueDao().oldestCreatedEpochMs()
+        TrackingNotificationHelper(appContext).updateFromState(
+            queueCount = queueCount,
+            paused = settings.trackingPaused,
+            lastSuccessfulUploadMs = settings.lastSuccessfulUploadEpochMs,
+            oldestQueuedEpochMs = oldest,
+        )
     }
 
     companion object {

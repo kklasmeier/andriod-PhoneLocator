@@ -2,9 +2,14 @@ package com.klasmeier.phonelocator.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.klasmeier.phonelocator.ops.ProblemBanner
 
 object AppPermissions {
     fun hasFineLocation(context: Context): Boolean =
@@ -31,6 +36,40 @@ object AppPermissions {
 
     fun allGranted(context: Context): Boolean =
         hasFineLocation(context) && hasBackgroundLocation(context) && hasNotifications(context)
+
+    fun isBatteryOptimizationDisabled(context: Context): Boolean {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    fun detectProblems(context: Context, serviceRunning: Boolean, paused: Boolean): List<ProblemBanner> {
+        val problems = mutableListOf<ProblemBanner>()
+        if (!hasFineLocation(context)) {
+            problems += ProblemBanner("Location permission not granted")
+        } else if (!hasBackgroundLocation(context)) {
+            problems += ProblemBanner("Background location not granted — use Allow all the time")
+        }
+        if (!hasNotifications(context)) {
+            problems += ProblemBanner("Notification permission not granted")
+        }
+        if (!isBatteryOptimizationDisabled(context)) {
+            problems += ProblemBanner("Battery optimization enabled — may stop tracking")
+        }
+        if (!paused && !serviceRunning) {
+            problems += ProblemBanner("Tracking service is not running")
+        }
+        return problems
+    }
+
+    fun batteryOptimizationIntent(context: Context): Intent =
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+
+    fun appSettingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
 
     fun statusSummary(context: Context): String {
         val location = when {

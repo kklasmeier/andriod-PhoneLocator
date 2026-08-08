@@ -10,24 +10,36 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.klasmeier.phonelocator.MainActivity
 import com.klasmeier.phonelocator.R
-import com.klasmeier.phonelocator.data.SettingsRepository
-import kotlinx.coroutines.runBlocking
-import java.util.concurrent.TimeUnit
+import com.klasmeier.phonelocator.ops.TrackingStatus
 
 class TrackingNotificationHelper(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
-    fun buildForegroundNotification(queueCount: Int, paused: Boolean = false, error: Boolean = false): Notification {
+    fun buildForegroundNotification(
+        queueCount: Int,
+        paused: Boolean = false,
+        lastSuccessfulUploadMs: Long? = null,
+        oldestQueuedEpochMs: Long? = null,
+    ): Notification {
         ensureChannel()
+        val now = System.currentTimeMillis()
+        val backlogError = TrackingStatus.isUploadBacklogError(
+            queueCount,
+            lastSuccessfulUploadMs,
+            oldestQueuedEpochMs,
+            now,
+        )
+        val backlogWarning = TrackingStatus.isUploadBacklogAlert(
+            queueCount,
+            lastSuccessfulUploadMs,
+            oldestQueuedEpochMs,
+            now,
+        )
         val text = when {
             paused -> "Paused"
-            error -> "Upload failed · tap to open"
-            queueCount > 10 -> "Queue $queueCount · check app"
-            else -> {
-                val lastSent = runBlocking { SettingsRepository(context).snapshot().lastSuccessfulUploadEpochMs }
-                val ago = lastSent?.let { formatAgo(System.currentTimeMillis() - it) } ?: "never"
-                "Active · sent $ago · queue $queueCount"
-            }
+            backlogError -> "Upload backlog · $queueCount queued · check VPN"
+            backlogWarning -> "Upload backlog · $queueCount queued · check connection"
+            else -> "Tracking active · queue $queueCount"
         }
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -39,8 +51,18 @@ class TrackingNotificationHelper(private val context: Context) {
             .build()
     }
 
-    fun updateFromState(queueCount: Int, paused: Boolean = false, error: Boolean = false) {
-        val notification = buildForegroundNotification(queueCount, paused, error)
+    fun updateFromState(
+        queueCount: Int,
+        paused: Boolean = false,
+        lastSuccessfulUploadMs: Long? = null,
+        oldestQueuedEpochMs: Long? = null,
+    ) {
+        val notification = buildForegroundNotification(
+            queueCount,
+            paused,
+            lastSuccessfulUploadMs,
+            oldestQueuedEpochMs,
+        )
         manager.notify(NOTIFICATION_ID, notification)
     }
 
@@ -60,15 +82,6 @@ class TrackingNotificationHelper(private val context: Context) {
             description = context.getString(R.string.notification_channel_description)
         }
         manager.createNotificationChannel(channel)
-    }
-
-    private fun formatAgo(deltaMs: Long): String {
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(deltaMs).coerceAtLeast(0)
-        return when {
-            minutes < 1 -> "just now"
-            minutes < 60 -> "${minutes}m ago"
-            else -> "${minutes / 60}h ago"
-        }
     }
 
     companion object {

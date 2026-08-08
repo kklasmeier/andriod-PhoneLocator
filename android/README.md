@@ -49,6 +49,26 @@ cd android
 .\test.bat android
 ```
 
+## Phase 4 dashboard (Status + Log tabs)
+
+- **Status:** colored health indicator, last sent/reading, queue, 24h upload success %, service uptime
+- **Alerts:** only when uploads back up for **4+ hours** (e.g. VPN off) — not on routine successful sends
+- **Problem banners** when upload backlog detected (not permissions/battery on every screen load)
+- **Log:** last 50 upload/service events with refresh and clear
+- **Settings:** permission summary, battery optimization shortcut, queue size, clear log
+
+## Remote access (WireGuard VPN)
+
+Public HTTPS through the Nighthawk router is **deferred**. For uploads away from home WiFi, connect the phone to **home WireGuard** first, then use the same API URL:
+
+```text
+http://192.168.1.26:8000/locator
+```
+
+WireGuard inbound: UDP **51822** → piGateway (`192.168.1.100`). Once the VPN tunnel is up, the phone can reach piSensors on the LAN.
+
+**Verify on phone (VPN connected):** open `http://192.168.1.26:8000/locator/api/v1/health` — should show `{"status":"ok"}`.
+
 ## LAN note
 
-Use the **LAN URL** until Phase 3 (HTTPS + public domain). Phone must be on home WiFi to reach `192.168.1.26`.
+On home WiFi (no VPN), the same URL works. No separate public API URL is required for this implementation.
