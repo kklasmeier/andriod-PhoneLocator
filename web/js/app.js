@@ -199,8 +199,8 @@ async function renderHome() {
 
   const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({
-    from: data.from,
-    to: data.to,
+    from: range.from,
+    to: range.to,
     limit: range.historyLimit,
   }));
   if (history.sampled && status === "ok") {
@@ -228,8 +228,8 @@ async function renderMapPage() {
   const dash = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
   const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({
-    from: dash.from,
-    to: dash.to,
+    from: range.from,
+    to: range.to,
     limit: range.historyLimit,
   }));
 
@@ -617,11 +617,11 @@ async function renderHistory() {
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading history…</div>`;
 
-  const dash = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
+  const range = getRange();
   const data = await apiGet("/api/v1/location/history", deviceParams({
-    from: dash.from,
-    to: dash.to,
-    limit: 500,
+    from: range.from,
+    to: range.to,
+    limit: range.historyLimit,
   }));
 
   const points = data.points || [];

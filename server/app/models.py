@@ -168,7 +168,7 @@ class StatsSummaryResponse(BaseModel):
     top_places: list[TopPlaceSummary]
     week_teaser: WeekTeaser | None = None
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
 class DashboardResponse(BaseModel):
@@ -181,7 +181,7 @@ class DashboardResponse(BaseModel):
     status: str
     summary: StatsSummaryResponse
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 
 
 class DeviceSettingsResponse(BaseModel):

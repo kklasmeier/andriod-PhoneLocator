@@ -432,21 +432,26 @@ def get_history(
             return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows], total, False
 
         step = max(1, (total + limit - 1) // limit)
-        rows = conn.execute(
+        id_rows = conn.execute(
             f"""
-            WITH ordered AS (
-                SELECT
-                    {HISTORY_POINT_COLUMNS},
-                    ROW_NUMBER() OVER (ORDER BY recorded_at ASC, id ASC) AS rn
-                FROM location_points
-                WHERE {where_sql}
-            )
-            SELECT {HISTORY_POINT_COLUMNS}
-            FROM ordered
-            WHERE (rn - 1) % ? = 0 OR rn = ?
+            SELECT id FROM location_points
+            WHERE {where_sql}
             ORDER BY recorded_at ASC, id ASC
             """,
-            [*params, step, total],
+            params,
+        ).fetchall()
+        selected_ids = [id_rows[i][0] for i in range(0, len(id_rows), step)]
+        if id_rows and id_rows[-1][0] not in selected_ids:
+            selected_ids.append(id_rows[-1][0])
+        placeholders = ",".join("?" for _ in selected_ids)
+        rows = conn.execute(
+            f"""
+            SELECT {HISTORY_POINT_COLUMNS}
+            FROM location_points
+            WHERE id IN ({placeholders})
+            ORDER BY recorded_at ASC, id ASC
+            """,
+            selected_ids,
         ).fetchall()
 
     return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows], total, True
