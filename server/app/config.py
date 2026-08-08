@@ -24,4 +24,11 @@ DATABASE_PATH = Path(
         str(Path(__file__).resolve().parents[1] / "data" / "phone-locator.db"),
     )
 )
-TIMEZONE = os.environ.get("PHONE_LOCATOR_TIMEZONE", "America/Detroit")
+NOMINATIM_BASE_URL = os.environ.get(
+    "PHONE_LOCATOR_NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"
+).rstrip("/")
+NOMINATIM_USER_AGENT = os.environ.get(
+    "PHONE_LOCATOR_NOMINATIM_USER_AGENT",
+    "PhoneLocator/1.0 (personal; https://github.com/kklasmeier/andriod-PhoneLocator)",
+)
+NOMINATIM_MIN_INTERVAL_SEC = float(os.environ.get("PHONE_LOCATOR_NOMINATIM_MIN_INTERVAL_SEC", "1.1"))

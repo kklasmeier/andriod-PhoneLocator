@@ -1,4 +1,4 @@
-import { apiGet, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
+import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
 import { destroyMap, fitTrail, initMap, renderTrail } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import { APP_VERSION } from "./version.js";
@@ -419,6 +419,10 @@ function renderSettings() {
   setActiveNav("/settings");
   setBanner(null);
   destroyMap();
+  renderSettingsBody();
+}
+
+async function renderSettingsBody() {
 
   const setupUrl = buildSetupUrl();
   const setupSection = setupUrl
@@ -440,6 +444,16 @@ function renderSettings() {
     </div>`
     : "";
 
+  let autoRename = true;
+  if (getToken() && getDeviceId()) {
+    try {
+      const settings = await apiGet("/api/v1/settings", deviceParams());
+      autoRename = settings.auto_rename_places;
+    } catch {
+      autoRename = true;
+    }
+  }
+
   appEl.innerHTML = `
     <h1 class="page-title">Settings</h1>
     <div class="panel form-grid">
@@ -457,6 +471,23 @@ function renderSettings() {
         <button type="button" class="secondary" id="test-connection">Test connection</button>
       </div>
       <p id="settings-msg" style="font-size:0.9rem;color:var(--muted)"></p>
+    </div>
+    <div class="panel form-grid place-naming-panel">
+      <h3>Place names</h3>
+      <label class="checkbox-row">
+        <input type="checkbox" id="cfg-auto-rename" ${autoRename ? "checked" : ""} />
+        Auto-name places from OpenStreetMap
+      </label>
+      <p class="setup-help">
+        Names unnamed places with a 5+ minute stay. Prefers POI names, otherwise street and city
+        (e.g. Oak St, Ann Arbor). Manual renames are never overwritten. Sends coordinates to
+        OpenStreetMap Nominatim (~1 request/sec).
+      </p>
+      <div class="form-actions">
+        <button type="button" class="secondary" id="estimate-geocode">Estimate queries</button>
+        <button type="button" id="run-auto-name">Name places now</button>
+      </div>
+      <p id="auto-name-msg" style="font-size:0.9rem;color:var(--muted)"></p>
     </div>
     ${setupSection}
   `;
@@ -487,6 +518,54 @@ function renderSettings() {
       apiBase: document.getElementById("cfg-api-base").value,
     });
     document.getElementById("settings-msg").textContent = "Saved.";
+  });
+
+  document.getElementById("cfg-auto-rename")?.addEventListener("change", async (event) => {
+    const msg = document.getElementById("auto-name-msg");
+    msg.textContent = "Saving…";
+    try {
+      await apiPut(
+        "/api/v1/settings",
+        { auto_rename_places: event.target.checked },
+        deviceParams()
+      );
+      msg.textContent = event.target.checked ? "Auto-naming enabled." : "Auto-naming disabled.";
+    } catch (err) {
+      msg.textContent = err.message;
+    }
+  });
+
+  document.getElementById("estimate-geocode")?.addEventListener("click", async () => {
+    const msg = document.getElementById("auto-name-msg");
+    msg.textContent = "Estimating…";
+    try {
+      const result = await apiPost("/api/v1/places/auto-name", {}, deviceParams({ dry_run: true }));
+      msg.textContent =
+        `${result.geocode_queries_needed} geocode queries needed ` +
+        `(${result.geocode_groups} clusters, ~${result.geocode_queries_needed}s first run).`;
+    } catch (err) {
+      msg.textContent = err.message;
+    }
+  });
+
+  document.getElementById("run-auto-name")?.addEventListener("click", async () => {
+    const msg = document.getElementById("auto-name-msg");
+    const btn = document.getElementById("run-auto-name");
+    btn.disabled = true;
+    msg.textContent = "Naming places… this may take about a minute on first run.";
+    try {
+      const result = await apiPost("/api/v1/places/auto-name", {}, deviceParams());
+      msg.textContent =
+        `Done — inherited ${result.places_inherited}, geocoded ${result.places_geocoded} ` +
+        `(${result.api_calls} API calls, ${result.cache_hits} cache hits).`;
+      if (result.errors?.length) {
+        msg.textContent += ` Errors: ${result.errors.join("; ")}`;
+      }
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   document.getElementById("test-connection").addEventListener("click", async () => {

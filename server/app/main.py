@@ -37,6 +37,7 @@ app.include_router(analytics.places_router)
 app.include_router(analytics.visits_router)
 app.include_router(analytics.travel_router)
 app.include_router(analytics.stats_router)
+app.include_router(analytics.settings_router)
 app.include_router(dashboard.router)
 
 _web_dir = _web_root()

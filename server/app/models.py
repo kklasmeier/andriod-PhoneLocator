@@ -180,3 +180,25 @@ class DashboardResponse(BaseModel):
     summary: StatsSummaryResponse
 
     model_config = {"populate_by_name": True}
+
+
+class DeviceSettingsResponse(BaseModel):
+    device_id: str
+    auto_rename_places: bool
+
+
+class DeviceSettingsUpdate(BaseModel):
+    auto_rename_places: bool
+
+
+class AutoNamePlacesResponse(BaseModel):
+    device_id: str
+    dry_run: bool
+    inherit_groups: int
+    geocode_groups: int
+    geocode_queries_needed: int
+    places_inherited: int
+    places_geocoded: int
+    cache_hits: int
+    api_calls: int
+    errors: list[str]

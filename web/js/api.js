@@ -162,6 +162,30 @@ export async function apiPut(path, body, params = {}) {
   return response.json();
 }
 
+export async function apiPost(path, body = {}, params = {}) {
+  const token = getToken();
+  if (!token) throw new Error("API token not configured — open Settings");
+
+  const url = buildApiUrl(path, params);
+  const response = await request(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized — check API token in Settings");
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Request failed (${response.status})`);
+  }
+  return response.json();
+}
+
 export function deviceParams(extra = {}) {
   const deviceId = getDeviceId();
   if (!deviceId) throw new Error("Device ID not configured — open Settings");

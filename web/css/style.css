@@ -438,6 +438,24 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   font-size: 0.95rem;
 }
 
+.place-naming-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.checkbox-row input {
+  width: 1rem;
+  height: 1rem;
+}
+
 .setup-help {
   margin: 0 0 1rem;
   font-size: 0.85rem;

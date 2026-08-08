@@ -87,6 +87,19 @@ CREATE TABLE IF NOT EXISTS analytics_meta (
     last_computed_at TEXT NOT NULL,
     last_point_recorded_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS device_settings (
+    device_id TEXT PRIMARY KEY,
+    auto_rename_places INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS geocode_cache (
+    cache_key TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'nominatim',
+    raw_json TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -118,6 +131,77 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
+
+
+def get_auto_rename_enabled(device_id: str) -> bool:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT auto_rename_places FROM device_settings WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    if row is None:
+        return True
+    return bool(row["auto_rename_places"])
+
+
+def set_auto_rename_enabled(device_id: str, enabled: bool) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO device_settings (device_id, auto_rename_places)
+            VALUES (?, ?)
+            ON CONFLICT(device_id) DO UPDATE SET auto_rename_places = excluded.auto_rename_places
+            """,
+            (device_id, 1 if enabled else 0),
+        )
+        conn.commit()
+
+
+def get_geocode_cache(cache_key: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM geocode_cache WHERE cache_key = ?",
+            (cache_key,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def set_geocode_cache(cache_key: str, label: str, raw_payload: dict[str, Any]) -> None:
+    import json
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO geocode_cache (cache_key, label, source, raw_json, created_at)
+            VALUES (?, ?, 'nominatim', ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET
+                label = excluded.label,
+                raw_json = excluded.raw_json,
+                created_at = excluded.created_at
+            """,
+            (cache_key, label, json.dumps(raw_payload), utc_now_iso()),
+        )
+        conn.commit()
+
+
+def set_place_names_if_null(device_id: str, place_ids: list[int], name: str) -> int:
+    if not place_ids:
+        return 0
+    placeholders = ",".join("?" for _ in place_ids)
+    params: list[Any] = [name, device_id, *place_ids]
+    with get_connection() as conn:
+        cursor = conn.execute(
+            f"""
+            UPDATE places
+            SET name = ?
+            WHERE device_id = ?
+              AND name IS NULL
+              AND id IN ({placeholders})
+            """,
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount
 
 
 @contextmanager

@@ -1,9 +1,38 @@
 """Orchestrate analytics recompute and summary queries."""
 
+import logging
+import threading
+
 from app import database
+from app.analytics.auto_naming import auto_rename_places
 from app.analytics.engine import TrackPoint, assign_visit_place_ids, cluster_places, segment_points
 from app.analytics.presentation import apply_presentation_rules
 from app.analytics.periods import overlap_seconds, resolve_period
+
+logger = logging.getLogger(__name__)
+
+
+def _auto_rename_background(device_id: str) -> None:
+    try:
+        result = auto_rename_places(device_id)
+        logger.info(
+            "auto-rename device=%s inherited=%s geocoded=%s api_calls=%s cache_hits=%s",
+            device_id,
+            result["places_inherited"],
+            result["places_geocoded"],
+            result["api_calls"],
+            result["cache_hits"],
+        )
+        if result["errors"]:
+            logger.warning("auto-rename errors device=%s: %s", device_id, "; ".join(result["errors"]))
+    except Exception:
+        logger.exception("auto-rename failed for device=%s", device_id)
+
+
+def schedule_auto_rename(device_id: str) -> None:
+    if not database.get_auto_rename_enabled(device_id):
+        return
+    threading.Thread(target=_auto_rename_background, args=(device_id,), daemon=True).start()
 
 
 def recompute_device(device_id: str) -> None:
@@ -28,6 +57,7 @@ def recompute_device(device_id: str) -> None:
         place_drafts=place_drafts,
         last_point_recorded_at=rows[-1]["recorded_at"] if rows else None,
     )
+    schedule_auto_rename(device_id)
 
 
 def ensure_computed(device_id: str) -> None:
