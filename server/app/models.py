@@ -34,6 +34,56 @@ class BatchUploadResponse(BaseModel):
     accepted: int
     duplicates: int
     errors: list[str]
+    commands: list["DeviceCommandSummary"] = Field(default_factory=list)
+
+
+class DeviceCommandSummary(BaseModel):
+    id: str
+    type: str
+
+
+class CommandCreateRequest(BaseModel):
+    type: str = Field(default="ring", min_length=1, max_length=32)
+
+
+class CommandAckRequest(BaseModel):
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    message: str | None = Field(default=None, max_length=256)
+
+
+class CommandOut(BaseModel):
+    id: str
+    device_id: str
+    type: str
+    status: str
+    created_at: str
+    expires_at: str
+    delivered_at: str | None = None
+    acked_at: str | None = None
+    ack_latitude: float | None = None
+    ack_longitude: float | None = None
+    ack_message: str | None = None
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> "CommandOut":
+        return cls(
+            id=row["id"],
+            device_id=row["device_id"],
+            type=row["command_type"],
+            status=row["status"],
+            created_at=row["created_at"],
+            expires_at=row["expires_at"],
+            delivered_at=row.get("delivered_at"),
+            acked_at=row.get("acked_at"),
+            ack_latitude=row.get("ack_latitude"),
+            ack_longitude=row.get("ack_longitude"),
+            ack_message=row.get("ack_message"),
+        )
+
+
+class PendingCommandsResponse(BaseModel):
+    commands: list[DeviceCommandSummary]
 
 
 class LocationPointOut(BaseModel):

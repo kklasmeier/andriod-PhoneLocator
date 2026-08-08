@@ -708,7 +708,24 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   padding: 0.5rem;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  align-items: center;
 }
+
+button.ring-phone {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
+.ring-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+.ring-status.pending { color: #93c5fd; }
+.ring-status.ok { color: #86efac; }
+.ring-status.error { color: #fca5a5; }
 
 .inline-rename {
   display: flex;

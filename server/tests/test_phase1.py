@@ -48,7 +48,7 @@ class Phase1ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.json(), {"accepted": 1, "duplicates": 0, "errors": []})
+        self.assertEqual(first.json(), {"accepted": 1, "duplicates": 0, "errors": [], "commands": []})
 
         second = self.client.post(
             "/api/v1/location/batch",
@@ -56,7 +56,7 @@ class Phase1ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(second.status_code, 200)
-        self.assertEqual(second.json(), {"accepted": 0, "duplicates": 1, "errors": []})
+        self.assertEqual(second.json(), {"accepted": 0, "duplicates": 1, "errors": [], "commands": []})
 
     def test_latest_and_history(self) -> None:
         self.client.post(

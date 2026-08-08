@@ -14,4 +14,18 @@ interface LocationApi {
         @Header("Authorization") authorization: String,
         @Body body: BatchUploadRequest,
     ): BatchUploadResponse
+
+    @GET("api/v1/devices/{deviceId}/commands/pending")
+    suspend fun pendingCommands(
+        @Header("Authorization") authorization: String,
+        @retrofit2.http.Path("deviceId") deviceId: String,
+    ): PendingCommandsResponse
+
+    @POST("api/v1/devices/{deviceId}/commands/{commandId}/ack")
+    suspend fun ackCommand(
+        @Header("Authorization") authorization: String,
+        @retrofit2.http.Path("deviceId") deviceId: String,
+        @retrofit2.http.Path("commandId") commandId: String,
+        @Body body: CommandAckRequest,
+    )
 }

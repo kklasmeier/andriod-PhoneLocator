@@ -5,13 +5,16 @@ import com.klasmeier.phonelocator.BuildConfig
 import com.klasmeier.phonelocator.data.SettingsRepository
 import com.klasmeier.phonelocator.data.api.ApiClientFactory
 import com.klasmeier.phonelocator.data.api.BatchUploadRequest
+import com.klasmeier.phonelocator.data.api.CommandAckRequest
+import com.klasmeier.phonelocator.data.api.DeviceCommandSummary
 import com.klasmeier.phonelocator.data.api.LocationPointPayload
+import com.klasmeier.phonelocator.location.CollectedLocation
+import com.klasmeier.phonelocator.location.LocationCollector
+import com.klasmeier.phonelocator.notification.RingAlarmHelper
 import com.klasmeier.phonelocator.data.db.ActivityLogEntity
 import com.klasmeier.phonelocator.data.db.AppDatabase
 import com.klasmeier.phonelocator.data.db.LatestReadingEntity
 import com.klasmeier.phonelocator.data.db.UploadQueueEntity
-import com.klasmeier.phonelocator.location.CollectedLocation
-import com.klasmeier.phonelocator.location.LocationCollector
 import com.klasmeier.phonelocator.notification.TrackingNotificationHelper
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -72,15 +75,26 @@ class UploadRepository(
         settingsRepository.markCollection(collected.recordedAtEpochMs)
     }
 
-    suspend fun flushQueue(maxBatchSize: Int = 50, logOnSuccess: Boolean = true): UploadResult =
+    suspend fun flushQueue(
+        maxBatchSize: Int = 50,
+        logOnSuccess: Boolean = true,
+        checkPendingCommands: Boolean = true,
+    ): UploadResult =
         withContext(Dispatchers.IO) {
         val settings = settingsRepository.snapshot()
         if (settings.apiToken.isBlank() || settings.apiBaseUrl.isBlank()) {
             return@withContext UploadResult(0, 0, database.uploadQueueDao().count())
         }
 
+        val api = apiFactory.create(settings.apiBaseUrl)
+        val deviceId = settings.deviceId.ifBlank { settingsRepository.ensureDeviceId() }
+        val auth = "Bearer ${settings.apiToken}"
+
         val pending = database.uploadQueueDao().oldest(maxBatchSize)
         if (pending.isEmpty()) {
+            if (checkPendingCommands) {
+                pollAndProcessCommands(api, auth, deviceId)
+            }
             return@withContext UploadResult(0, 0, 0)
         }
 
@@ -96,12 +110,11 @@ class UploadRepository(
         }
 
         settingsRepository.markUploadAttempt(System.currentTimeMillis())
-        val api = apiFactory.create(settings.apiBaseUrl)
         return@withContext try {
             val response = api.uploadBatch(
-                authorization = "Bearer ${settings.apiToken}",
+                authorization = auth,
                 body = BatchUploadRequest(
-                    deviceId = settings.deviceId.ifBlank { settingsRepository.ensureDeviceId() },
+                    deviceId = deviceId,
                     points = points,
                 ),
             )
@@ -121,6 +134,11 @@ class UploadRepository(
             if (response.errors.isNotEmpty()) {
                 log("error", response.errors.first())
             }
+            if (checkPendingCommands && response.commands.isNotEmpty()) {
+                processCommands(api, auth, deviceId, response.commands)
+            } else if (checkPendingCommands && database.uploadQueueDao().count() == 0) {
+                pollAndProcessCommands(api, auth, deviceId)
+            }
             val remaining = database.uploadQueueDao().count()
             updateNotification(remaining)
             UploadResult(response.accepted, response.duplicates, remaining)
@@ -130,6 +148,68 @@ class UploadRepository(
             val remaining = database.uploadQueueDao().count()
             updateNotification(remaining)
             UploadResult(0, 0, remaining)
+        }
+    }
+
+    private suspend fun pollAndProcessCommands(
+        api: com.klasmeier.phonelocator.data.api.LocationApi,
+        auth: String,
+        deviceId: String,
+    ) {
+        try {
+            val pending = api.pendingCommands(auth, deviceId).commands
+            if (pending.isNotEmpty()) {
+                processCommands(api, auth, deviceId, pending)
+            }
+        } catch (exc: Exception) {
+            log("error", "Command poll failed — ${exc.message ?: "unknown error"}")
+        }
+    }
+
+    private suspend fun processCommands(
+        api: com.klasmeier.phonelocator.data.api.LocationApi,
+        auth: String,
+        deviceId: String,
+        commands: List<DeviceCommandSummary>,
+    ) {
+        for (command in commands) {
+            when (command.type) {
+                "ring" -> handleRingCommand(api, auth, deviceId, command.id)
+                else -> log("error", "Unknown command type: ${command.type}")
+            }
+        }
+    }
+
+    private suspend fun handleRingCommand(
+        api: com.klasmeier.phonelocator.data.api.LocationApi,
+        auth: String,
+        deviceId: String,
+        commandId: String,
+    ) {
+        RingAlarmHelper(appContext).ring()
+        var latitude: Double? = null
+        var longitude: Double? = null
+        val collected = LocationCollector(appContext).collect(appVersion = BuildConfig.VERSION_NAME)
+        if (collected != null) {
+            enqueue(collected)
+            flushQueue(logOnSuccess = false, checkPendingCommands = false)
+            latitude = collected.payload.latitude
+            longitude = collected.payload.longitude
+        }
+        try {
+            api.ackCommand(
+                authorization = auth,
+                deviceId = deviceId,
+                commandId = commandId,
+                body = CommandAckRequest(
+                    latitude = latitude,
+                    longitude = longitude,
+                    message = if (collected != null) "ringing" else "ringing (no fresh location)",
+                ),
+            )
+            log("info", "Ring command acknowledged")
+        } catch (exc: Exception) {
+            log("error", "Ring ack failed — ${exc.message ?: "unknown error"}")
         }
     }
 

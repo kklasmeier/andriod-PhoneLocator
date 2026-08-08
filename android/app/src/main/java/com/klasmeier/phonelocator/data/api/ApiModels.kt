@@ -32,10 +32,29 @@ data class BatchUploadRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class DeviceCommandSummary(
+    val id: String,
+    val type: String,
+)
+
+@JsonClass(generateAdapter = true)
 data class BatchUploadResponse(
     val accepted: Int,
     val duplicates: Int,
     val errors: List<String> = emptyList(),
+    val commands: List<DeviceCommandSummary> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class PendingCommandsResponse(
+    val commands: List<DeviceCommandSummary>,
+)
+
+@JsonClass(generateAdapter = true)
+data class CommandAckRequest(
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val message: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

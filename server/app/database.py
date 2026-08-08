@@ -1,6 +1,8 @@
+import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -111,6 +113,23 @@ CREATE TABLE IF NOT EXISTS geocode_cache (
     raw_json TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS device_commands (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    command_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    delivered_at TEXT,
+    acked_at TEXT,
+    ack_latitude REAL,
+    ack_longitude REAL,
+    ack_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_commands_device_status
+    ON device_commands(device_id, status, created_at);
 """
 
 
@@ -747,3 +766,147 @@ def get_travel_segments(
             params,
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+COMMAND_EXPIRY_MINUTES = 15
+COMMAND_RATE_LIMIT_SECONDS = 30
+
+
+def _expire_stale_commands(conn: sqlite3.Connection, device_id: str | None = None) -> None:
+    now = utc_now_iso()
+    if device_id is None:
+        conn.execute(
+            "UPDATE device_commands SET status = 'expired' WHERE status IN ('pending', 'delivered') AND expires_at < ?",
+            (now,),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE device_commands
+            SET status = 'expired'
+            WHERE device_id = ? AND status IN ('pending', 'delivered') AND expires_at < ?
+            """,
+            (device_id, now),
+        )
+
+
+def create_device_command(device_id: str, command_type: str = "ring") -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    with get_connection() as conn:
+        _expire_stale_commands(conn, device_id)
+        recent = conn.execute(
+            """
+            SELECT created_at FROM device_commands
+            WHERE device_id = ? AND command_type = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (device_id, command_type),
+        ).fetchone()
+        if recent is not None:
+            created = datetime.fromisoformat(recent["created_at"].replace("Z", "+00:00"))
+            if (now - created).total_seconds() < COMMAND_RATE_LIMIT_SECONDS:
+                raise ValueError("ring rate limit")
+
+        command_id = str(uuid.uuid4())
+        created_at = utc_now_iso()
+        expires_at = (now + timedelta(minutes=COMMAND_EXPIRY_MINUTES)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        conn.execute(
+            """
+            INSERT INTO device_commands (
+                id, device_id, command_type, status, created_at, expires_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?)
+            """,
+            (command_id, device_id, command_type, created_at, expires_at),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ?",
+            (command_id,),
+        ).fetchone()
+    return dict(row)
+
+
+def get_device_command(command_id: str, device_id: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        _expire_stale_commands(conn, device_id)
+        row = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ? AND device_id = ?",
+            (command_id, device_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def claim_pending_commands(device_id: str) -> list[dict[str, Any]]:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        _expire_stale_commands(conn, device_id)
+        rows = conn.execute(
+            """
+            SELECT * FROM device_commands
+            WHERE device_id = ? AND status = 'pending' AND expires_at >= ?
+            ORDER BY created_at ASC
+            """,
+            (device_id, now),
+        ).fetchall()
+        if not rows:
+            return []
+        ids = [row["id"] for row in rows]
+        placeholders = ",".join("?" for _ in ids)
+        conn.execute(
+            f"""
+            UPDATE device_commands
+            SET status = 'delivered', delivered_at = ?
+            WHERE id IN ({placeholders}) AND status = 'pending'
+            """,
+            (now, *ids),
+        )
+        conn.commit()
+        delivered = conn.execute(
+            f"""
+            SELECT * FROM device_commands
+            WHERE id IN ({placeholders})
+            ORDER BY created_at ASC
+            """,
+            tuple(ids),
+        ).fetchall()
+    return [dict(row) for row in delivered]
+
+
+def ack_device_command(
+    command_id: str,
+    device_id: str,
+    *,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    message: str | None = None,
+) -> dict[str, Any] | None:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ? AND device_id = ?",
+            (command_id, device_id),
+        ).fetchone()
+        if row is None:
+            return None
+        if row["status"] not in ("pending", "delivered"):
+            return dict(row)
+        conn.execute(
+            """
+            UPDATE device_commands
+            SET status = 'acked',
+                acked_at = ?,
+                ack_latitude = ?,
+                ack_longitude = ?,
+                ack_message = ?,
+                delivered_at = COALESCE(delivered_at, ?)
+            WHERE id = ? AND device_id = ?
+            """,
+            (now, latitude, longitude, message, now, command_id, device_id),
+        )
+        conn.commit()
+        updated = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ?",
+            (command_id,),
+        ).fetchone()
+    return dict(updated) if updated else None

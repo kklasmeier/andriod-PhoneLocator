@@ -7,6 +7,7 @@ from app.auth import verify_api_token
 from app.models import (
     BatchUploadRequest,
     BatchUploadResponse,
+    DeviceCommandSummary,
     HistoryResponse,
     LatestLocationResponse,
 )
@@ -23,10 +24,15 @@ def upload_batch(
         device_id=payload.device_id,
         points=payload.points,
     )
+    command_rows = database.claim_pending_commands(payload.device_id)
     return BatchUploadResponse(
         accepted=accepted,
         duplicates=duplicates,
         errors=errors,
+        commands=[
+            DeviceCommandSummary(id=row["id"], type=row["command_type"])
+            for row in command_rows
+        ],
     )
 
 

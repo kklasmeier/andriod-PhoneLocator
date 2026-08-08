@@ -189,8 +189,9 @@ export function renderPlace({
   const padded = bounds.pad(0.18);
   _map.fitBounds(padded);
   refreshMapSize();
+  const gen = _mapGeneration;
   setTimeout(() => {
-    if (!_map) return;
+    if (!_map || gen !== _mapGeneration) return;
     _map.invalidateSize({ pan: false });
     _map.fitBounds(padded);
   }, 150);

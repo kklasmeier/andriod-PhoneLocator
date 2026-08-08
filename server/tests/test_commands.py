@@ -1,0 +1,124 @@
+"""Device command queue tests (ring phone)."""
+
+import os
+import tempfile
+import unittest
+import uuid
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+_test_dir = tempfile.mkdtemp()
+os.environ["PHONE_LOCATOR_API_TOKEN"] = "test-token-commands"
+os.environ["PHONE_LOCATOR_DATABASE_PATH"] = str(Path(_test_dir) / "test.db")
+
+from app import database  # noqa: E402
+from app.main import app  # noqa: E402
+
+
+class DeviceCommandTests(unittest.TestCase):
+    def setUp(self) -> None:
+        database.init_db()
+        self.client = TestClient(app)
+        self.headers = {"Authorization": "Bearer test-token-commands"}
+        self.device_id = f"test-phone-{uuid.uuid4()}"
+
+    def test_create_and_poll_ring_command(self) -> None:
+        created = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands",
+            json={"type": "ring"},
+            headers=self.headers,
+        )
+        self.assertEqual(created.status_code, 200)
+        body = created.json()
+        self.assertEqual(body["status"], "pending")
+        self.assertEqual(body["type"], "ring")
+        command_id = body["id"]
+
+        polled = self.client.get(
+            f"/api/v1/devices/{self.device_id}/commands/{command_id}",
+            headers=self.headers,
+        )
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(polled.json()["status"], "pending")
+
+    def test_rate_limit(self) -> None:
+        first = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands",
+            json={"type": "ring"},
+            headers=self.headers,
+        )
+        self.assertEqual(first.status_code, 200)
+
+        second = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands",
+            json={"type": "ring"},
+            headers=self.headers,
+        )
+        self.assertEqual(second.status_code, 429)
+
+    def test_pending_claim_and_ack(self) -> None:
+        created = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands",
+            json={"type": "ring"},
+            headers=self.headers,
+        )
+        command_id = created.json()["id"]
+
+        pending = self.client.get(
+            f"/api/v1/devices/{self.device_id}/commands/pending",
+            headers=self.headers,
+        )
+        self.assertEqual(pending.status_code, 200)
+        commands = pending.json()["commands"]
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0]["id"], command_id)
+        self.assertEqual(commands[0]["type"], "ring")
+
+        status = self.client.get(
+            f"/api/v1/devices/{self.device_id}/commands/{command_id}",
+            headers=self.headers,
+        )
+        self.assertEqual(status.json()["status"], "delivered")
+
+        acked = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands/{command_id}/ack",
+            json={"latitude": 42.1, "longitude": -83.2, "message": "ringing"},
+            headers=self.headers,
+        )
+        self.assertEqual(acked.status_code, 200)
+        ack_body = acked.json()
+        self.assertEqual(ack_body["status"], "acked")
+        self.assertEqual(ack_body["ack_latitude"], 42.1)
+        self.assertEqual(ack_body["ack_longitude"], -83.2)
+
+    def test_batch_upload_returns_pending_commands(self) -> None:
+        created = self.client.post(
+            f"/api/v1/devices/{self.device_id}/commands",
+            json={"type": "ring"},
+            headers=self.headers,
+        )
+        self.assertEqual(created.status_code, 200)
+        command_id = created.json()["id"]
+
+        point = {
+            "client_point_id": "cmd-pt-001",
+            "latitude": 42.0,
+            "longitude": -83.0,
+            "recorded_at": "2026-07-26T22:00:00Z",
+        }
+        batch = self.client.post(
+            "/api/v1/location/batch",
+            json={"device_id": self.device_id, "points": [point]},
+            headers=self.headers,
+        )
+        self.assertEqual(batch.status_code, 200)
+        batch_body = batch.json()
+        self.assertEqual(batch_body["accepted"], 1)
+        self.assertEqual(len(batch_body["commands"]), 1)
+        self.assertEqual(batch_body["commands"][0]["id"], command_id)
+        self.assertEqual(batch_body["commands"][0]["type"], "ring")
+
+
+if __name__ == "__main__":
+    unittest.main()

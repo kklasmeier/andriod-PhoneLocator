@@ -112,6 +112,119 @@ function showError(err) {
   }
 }
 
+let ringPollTimer = null;
+
+function clearRingPoll() {
+  if (ringPollTimer) {
+    clearTimeout(ringPollTimer);
+    ringPollTimer = null;
+  }
+}
+
+function updateRingStatus(statusEl, btn, status) {
+  if (status.status === "acked") {
+    statusEl.textContent = "Phone responded — location updated";
+    statusEl.className = "ring-status ok";
+    btn.disabled = false;
+    return true;
+  }
+  if (status.status === "delivered") {
+    statusEl.textContent = "Delivered to phone — ringing…";
+    statusEl.className = "ring-status pending";
+    return false;
+  }
+  if (status.status === "pending") {
+    statusEl.textContent = "Queued — waiting for phone sync…";
+    statusEl.className = "ring-status pending";
+    return false;
+  }
+  if (status.status === "expired") {
+    statusEl.textContent = "Command expired before phone responded";
+    statusEl.className = "ring-status error";
+    btn.disabled = false;
+    return true;
+  }
+  if (status.status === "timeout") {
+    statusEl.textContent = "Timed out — phone may be offline";
+    statusEl.className = "ring-status error";
+    btn.disabled = false;
+    return true;
+  }
+  statusEl.textContent = status.message || "Ring failed";
+  statusEl.className = "ring-status error";
+  btn.disabled = false;
+  return true;
+}
+
+async function pollRingCommand(commandId, statusEl, btn) {
+  const deviceId = getDeviceId();
+  let attempt = 0;
+  const poll = async () => {
+    try {
+      const status = await apiGet(`/api/v1/devices/${deviceId}/commands/${commandId}`);
+      const done = updateRingStatus(statusEl, btn, status);
+      if (done) {
+        clearRingPoll();
+        if (status.status === "acked") {
+          const range = getRange();
+          const [latest, history] = await Promise.all([
+            apiGet("/api/v1/location/latest", deviceParams()),
+            apiGet("/api/v1/location/history", deviceParams({
+              from: range.from,
+              to: range.to,
+              limit: range.historyLimit,
+            })),
+          ]);
+          renderTrail(history.points || [], latest.point);
+          setBanner("Phone rang successfully", "info");
+        }
+        return;
+      }
+      attempt += 1;
+      if (attempt >= 90) {
+        updateRingStatus(statusEl, btn, { status: "timeout" });
+        clearRingPoll();
+        return;
+      }
+      ringPollTimer = setTimeout(poll, 2000);
+    } catch (err) {
+      updateRingStatus(statusEl, btn, { status: "error", message: err?.message });
+      clearRingPoll();
+    }
+  };
+  poll();
+}
+
+async function ringPhone() {
+  if (!confirm("Ring this phone? It will sound and vibrate on the next sync (usually within a few minutes).")) {
+    return;
+  }
+  const btn = document.getElementById("ring-phone-btn");
+  const statusEl = document.getElementById("ring-status");
+  if (!btn || !statusEl) return;
+
+  clearRingPoll();
+  btn.disabled = true;
+  statusEl.textContent = "Sending ring command…";
+  statusEl.className = "ring-status pending";
+
+  try {
+    const deviceId = getDeviceId();
+    const created = await apiPost(`/api/v1/devices/${deviceId}/commands`, { type: "ring" });
+    statusEl.textContent = "Waiting for phone to respond…";
+    pollRingCommand(created.id, statusEl, btn);
+  } catch (err) {
+    const msg = err?.message || String(err);
+    if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+      statusEl.textContent = "Please wait 30 seconds between rings";
+    } else {
+      statusEl.textContent = msg;
+    }
+    statusEl.className = "ring-status error";
+    btn.disabled = false;
+  }
+}
+
 async function renderHome() {
   setActiveNav("/");
   appEl.innerHTML = `<div class="loading">Loading dashboard…</div>`;
@@ -181,7 +294,9 @@ async function renderHome() {
     <div class="home-map-section">
       <div class="map-panel home">
         <div class="map-controls">
+          <button type="button" class="ring-phone" id="ring-phone-btn">Ring phone</button>
           <button type="button" class="secondary" id="fit-trail-btn">Fit trail</button>
+          <span id="ring-status" class="ring-status" aria-live="polite"></span>
         </div>
         <div id="home-map" class="map-container"></div>
       </div>
@@ -196,6 +311,7 @@ async function renderHome() {
 
   initMap("home-map");
   document.getElementById("fit-trail-btn")?.addEventListener("click", fitTrail);
+  document.getElementById("ring-phone-btn")?.addEventListener("click", ringPhone);
 
   const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({

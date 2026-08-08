@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from app import database
-from app.routes import analytics, dashboard, health, location
+from app.routes import analytics, commands, dashboard, health, location
 
 
 def _web_root() -> Path | None:
@@ -34,6 +34,7 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(location.router)
+app.include_router(commands.router)
 app.include_router(analytics.places_router)
 app.include_router(analytics.visits_router)
 app.include_router(analytics.travel_router)
