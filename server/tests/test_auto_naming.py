@@ -66,6 +66,24 @@ class AutoNamingPlanTests(unittest.TestCase):
         self.assertEqual(plan["inherit_groups"][0]["place_ids"], [2])
         self.assertEqual(plan["geocode_queries_needed"], 1)
 
+    def test_qualifies_on_total_visit_time(self) -> None:
+        places = [
+            {
+                "id": 10,
+                "name": None,
+                "center_lat": 41.0,
+                "center_lon": -82.0,
+                "visit_count": 3,
+            }
+        ]
+        visits = [
+            {"place_id": 10, "duration_sec": 120},
+            {"place_id": 10, "duration_sec": 120},
+            {"place_id": 10, "duration_sec": 120},
+        ]
+        plan = plan_auto_naming(places, visits)
+        self.assertEqual(plan["geocode_queries_needed"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

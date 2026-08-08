@@ -90,7 +90,11 @@ CREATE TABLE IF NOT EXISTS analytics_meta (
 
 CREATE TABLE IF NOT EXISTS device_settings (
     device_id TEXT PRIMARY KEY,
-    auto_rename_places INTEGER NOT NULL DEFAULT 1
+    auto_rename_places INTEGER NOT NULL DEFAULT 1,
+    auto_rename_running INTEGER NOT NULL DEFAULT 0,
+    auto_rename_started_at TEXT,
+    auto_rename_finished_at TEXT,
+    auto_rename_last_result TEXT
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -130,7 +134,21 @@ def init_db() -> None:
     config.DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
+        _migrate_device_settings(conn)
         conn.commit()
+
+
+def _migrate_device_settings(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(device_settings)")}
+    additions = {
+        "auto_rename_running": "INTEGER NOT NULL DEFAULT 0",
+        "auto_rename_started_at": "TEXT",
+        "auto_rename_finished_at": "TEXT",
+        "auto_rename_last_result": "TEXT",
+    }
+    for name, ddl in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE device_settings ADD COLUMN {name} {ddl}")
 
 
 def get_auto_rename_enabled(device_id: str) -> bool:
@@ -155,6 +173,80 @@ def set_auto_rename_enabled(device_id: str, enabled: bool) -> None:
             (device_id, 1 if enabled else 0),
         )
         conn.commit()
+
+
+def try_begin_auto_rename_run(device_id: str) -> bool:
+    """Mark auto-rename as running. Returns False if a run is already in progress."""
+    now = utc_now_iso()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT auto_rename_running FROM device_settings WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        if row is not None and row["auto_rename_running"]:
+            return False
+        conn.execute(
+            """
+            INSERT INTO device_settings (
+                device_id, auto_rename_places, auto_rename_running, auto_rename_started_at
+            ) VALUES (?, 1, 1, ?)
+            ON CONFLICT(device_id) DO UPDATE SET
+                auto_rename_running = 1,
+                auto_rename_started_at = excluded.auto_rename_started_at
+            """,
+            (device_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def finish_auto_rename_run(device_id: str, result: dict[str, Any]) -> None:
+    import json
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE device_settings
+            SET auto_rename_running = 0,
+                auto_rename_finished_at = ?,
+                auto_rename_last_result = ?
+            WHERE device_id = ?
+            """,
+            (utc_now_iso(), json.dumps(result), device_id),
+        )
+        conn.commit()
+
+
+def get_auto_rename_status(device_id: str) -> dict[str, Any]:
+    import json
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM device_settings WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    if row is None:
+        return {
+            "device_id": device_id,
+            "running": False,
+            "started_at": None,
+            "finished_at": None,
+            "last_result": None,
+        }
+    data = dict(row)
+    last_result = None
+    if data.get("auto_rename_last_result"):
+        try:
+            last_result = json.loads(data["auto_rename_last_result"])
+        except json.JSONDecodeError:
+            last_result = None
+    return {
+        "device_id": device_id,
+        "running": bool(data.get("auto_rename_running")),
+        "started_at": data.get("auto_rename_started_at"),
+        "finished_at": data.get("auto_rename_finished_at"),
+        "last_result": last_result,
+    }
 
 
 def get_geocode_cache(cache_key: str) -> dict[str, Any] | None:

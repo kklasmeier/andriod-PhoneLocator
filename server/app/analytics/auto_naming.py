@@ -53,11 +53,19 @@ def _nearest_named_place(place: dict[str, Any], named_places: list[dict[str, Any
     return best
 
 
-def plan_auto_naming(places: list[dict[str, Any]], visits: list[dict[str, Any]]) -> dict[str, Any]:
-    qualifying_place_ids: set[int] = set()
+def _qualifying_place_ids(visits: list[dict[str, Any]]) -> set[int]:
+    """Places with at least 5 minutes total stay time across all visits."""
+    totals: dict[int, int] = {}
     for visit in visits:
-        if visit["duration_sec"] >= MIN_VISIT_PRESENTATION_SEC and visit["place_id"] is not None:
-            qualifying_place_ids.add(visit["place_id"])
+        place_id = visit.get("place_id")
+        if place_id is None:
+            continue
+        totals[place_id] = totals.get(place_id, 0) + int(visit["duration_sec"])
+    return {place_id for place_id, total in totals.items() if total >= MIN_VISIT_PRESENTATION_SEC}
+
+
+def plan_auto_naming(places: list[dict[str, Any]], visits: list[dict[str, Any]]) -> dict[str, Any]:
+    qualifying_place_ids = _qualifying_place_ids(visits)
 
     named = [p for p in places if p.get("name")]
     unnamed = [p for p in places if not p.get("name")]
@@ -105,6 +113,25 @@ def plan_auto_naming(places: list[dict[str, Any]], visits: list[dict[str, Any]])
 def auto_rename_places(device_id: str, *, dry_run: bool = False) -> dict[str, Any]:
     from app import database
 
+    if not dry_run and not database.try_begin_auto_rename_run(device_id):
+        status = database.get_auto_rename_status(device_id)
+        return {
+            "device_id": device_id,
+            "dry_run": False,
+            "skipped": True,
+            "reason": "already_running",
+            "running": True,
+            "started_at": status.get("started_at"),
+            "inherit_groups": 0,
+            "geocode_groups": 0,
+            "geocode_queries_needed": 0,
+            "places_inherited": 0,
+            "places_geocoded": 0,
+            "cache_hits": 0,
+            "api_calls": 0,
+            "errors": [],
+        }
+
     places = database.get_places(device_id)
     visits = database.get_visits(device_id, limit=100_000)
     plan = plan_auto_naming(places, visits)
@@ -115,40 +142,48 @@ def auto_rename_places(device_id: str, *, dry_run: bool = False) -> dict[str, An
     api_calls = 0
     errors: list[str] = []
 
-    if not dry_run:
-        for group in plan["inherit_groups"]:
-            count = database.set_place_names_if_null(device_id, group["place_ids"], group["name"])
-            inherited += count
+    try:
+        if not dry_run:
+            for group in plan["inherit_groups"]:
+                count = database.set_place_names_if_null(device_id, group["place_ids"], group["name"])
+                inherited += count
 
-        for group in plan["geocode_groups"]:
-            lat = group["lat"]
-            lon = group["lon"]
-            key = geocode_client.cache_key_for(lat, lon)
-            cached = database.get_geocode_cache(key)
-            if cached:
-                label = cached["label"]
-                cache_hits += 1
-            else:
-                try:
-                    label, raw = geocode_client.reverse_geocode(lat, lon)
-                    database.set_geocode_cache(key, label, raw)
-                    api_calls += 1
-                except RuntimeError as err:
-                    errors.append(str(err))
-                    continue
+            for group in plan["geocode_groups"]:
+                lat = group["lat"]
+                lon = group["lon"]
+                key = geocode_client.cache_key_for(lat, lon)
+                cached = database.get_geocode_cache(key)
+                if cached:
+                    label = cached["label"]
+                    cache_hits += 1
+                else:
+                    try:
+                        label, raw = geocode_client.reverse_geocode(lat, lon)
+                        database.set_geocode_cache(key, label, raw)
+                        api_calls += 1
+                    except RuntimeError as err:
+                        errors.append(str(err))
+                        continue
 
-            count = database.set_place_names_if_null(device_id, group["place_ids"], label)
-            geocoded += count
-
-    return {
-        "device_id": device_id,
-        "dry_run": dry_run,
-        "inherit_groups": len(plan["inherit_groups"]),
-        "geocode_groups": len(plan["geocode_groups"]),
-        "geocode_queries_needed": plan["geocode_queries_needed"],
-        "places_inherited": inherited,
-        "places_geocoded": geocoded,
-        "cache_hits": cache_hits,
-        "api_calls": api_calls,
-        "errors": errors,
-    }
+                count = database.set_place_names_if_null(device_id, group["place_ids"], label)
+                geocoded += count
+    finally:
+        result = {
+            "device_id": device_id,
+            "dry_run": dry_run,
+            "skipped": False,
+            "inherit_groups": len(plan["inherit_groups"]),
+            "geocode_groups": len(plan["geocode_groups"]),
+            "geocode_queries_needed": plan["geocode_queries_needed"],
+            "places_inherited": inherited,
+            "places_geocoded": geocoded,
+            "cache_hits": cache_hits,
+            "api_calls": api_calls,
+            "errors": errors,
+            "unnamed_skipped_short_stay": len(
+                [p for p in places if not p.get("name") and p["id"] not in _qualifying_place_ids(visits)]
+            ),
+        }
+        if not dry_run:
+            database.finish_auto_rename_run(device_id, result)
+        return result

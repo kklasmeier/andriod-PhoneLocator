@@ -119,9 +119,15 @@ def analyze(db_path: str, device_id: str) -> dict:
     conn.close()
 
     qualifying_place_ids: set[int] = set()
+    totals: dict[int, int] = {}
     for visit in visits:
-        if visit["duration_sec"] >= MIN_VISIT_SEC and visit["place_id"] is not None:
-            qualifying_place_ids.add(visit["place_id"])
+        place_id = visit.get("place_id")
+        if place_id is None:
+            continue
+        totals[place_id] = totals.get(place_id, 0) + int(visit["duration_sec"])
+    for place_id, total in totals.items():
+        if total >= MIN_VISIT_SEC:
+            qualifying_place_ids.add(place_id)
 
     named = [p for p in places if p.get("name")]
     unnamed = [p for p in places if not p.get("name")]

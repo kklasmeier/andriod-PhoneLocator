@@ -194,6 +194,10 @@ class DeviceSettingsUpdate(BaseModel):
 class AutoNamePlacesResponse(BaseModel):
     device_id: str
     dry_run: bool
+    skipped: bool = False
+    reason: str | None = None
+    running: bool = False
+    started_at: str | None = None
     inherit_groups: int
     geocode_groups: int
     geocode_queries_needed: int
@@ -202,3 +206,12 @@ class AutoNamePlacesResponse(BaseModel):
     cache_hits: int
     api_calls: int
     errors: list[str]
+    unnamed_skipped_short_stay: int | None = None
+
+
+class AutoRenameStatusResponse(BaseModel):
+    device_id: str
+    running: bool
+    started_at: str | None = None
+    finished_at: str | None = None
+    last_result: dict | None = None

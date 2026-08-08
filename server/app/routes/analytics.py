@@ -9,6 +9,7 @@ from app.analytics.periods import resolve_range
 from app.auth import verify_api_token
 from app.models import (
     AutoNamePlacesResponse,
+    AutoRenameStatusResponse,
     DeviceSettingsResponse,
     DeviceSettingsUpdate,
     PlaceOut,
@@ -60,6 +61,15 @@ def auto_name_places(
     analytics_service.ensure_computed(device_id)
     result = auto_rename_places(device_id, dry_run=dry_run)
     return AutoNamePlacesResponse(**result)
+
+
+@places_router.get("/auto-name/status", response_model=AutoRenameStatusResponse)
+def auto_name_status(
+    device_id: Annotated[str, Query(min_length=1, max_length=128)],
+    _: Annotated[None, Depends(verify_api_token)],
+) -> AutoRenameStatusResponse:
+    status = database.get_auto_rename_status(device_id)
+    return AutoRenameStatusResponse(**status)
 
 
 @settings_router.get("", response_model=DeviceSettingsResponse)

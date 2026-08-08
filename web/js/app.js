@@ -17,6 +17,52 @@ import {
 const appEl = document.getElementById("app");
 const bannerEl = document.getElementById("banner");
 const footerEl = document.getElementById("site-footer");
+let autoNamePollTimer = null;
+
+function formatAutoRenameStatus(status) {
+  if (status.running) {
+    const started = status.started_at ? formatTime(status.started_at) : "recently";
+    return `Naming in progress (started ${started})…`;
+  }
+  if (status.last_result && status.finished_at) {
+    const r = status.last_result;
+    let text =
+      `Last run ${formatTime(status.finished_at)}: geocoded ${r.places_geocoded}, ` +
+      `inherited ${r.places_inherited} (${r.api_calls} API calls, ${r.cache_hits} cache hits).`;
+    if (r.unnamed_skipped_short_stay) {
+      text += ` ${r.unnamed_skipped_short_stay} unnamed place(s) skipped — under 5 min total stay.`;
+    }
+    if (r.errors?.length) {
+      text += ` Errors: ${r.errors.join("; ")}`;
+    }
+    return text;
+  }
+  return "Idle — no naming run recorded yet.";
+}
+
+async function refreshAutoRenameStatus() {
+  const msg = document.getElementById("auto-name-msg");
+  const btn = document.getElementById("run-auto-name");
+  if (!msg || !getToken() || !getDeviceId()) return;
+
+  try {
+    const status = await apiGet("/api/v1/places/auto-name/status", deviceParams());
+    msg.textContent = formatAutoRenameStatus(status);
+    if (btn) btn.disabled = !!status.running;
+    if (status.running) {
+      autoNamePollTimer = setTimeout(refreshAutoRenameStatus, 2000);
+    }
+  } catch (err) {
+    msg.textContent = err.message;
+  }
+}
+
+function stopAutoRenamePolling() {
+  if (autoNamePollTimer) {
+    clearTimeout(autoNamePollTimer);
+    autoNamePollTimer = null;
+  }
+}
 
 function setFooter(text) {
   if (footerEl) footerEl.textContent = text;
@@ -479,9 +525,10 @@ async function renderSettingsBody() {
         Auto-name places from OpenStreetMap
       </label>
       <p class="setup-help">
-        Names unnamed places with a 5+ minute stay. Prefers POI names, otherwise street and city
-        (e.g. Oak St, Ann Arbor). Manual renames are never overwritten. Sends coordinates to
-        OpenStreetMap Nominatim (~1 request/sec).
+        When enabled, naming runs automatically in the background after new location data is processed
+        (you do not need to press the button each time). Names unnamed places with 5+ minutes total stay
+        time. Prefers POI names, otherwise street and city (e.g. Oak St, Ann Arbor). Manual renames are
+        never overwritten. Sends coordinates to OpenStreetMap Nominatim (~1 request/sec).
       </p>
       <div class="form-actions">
         <button type="button" class="secondary" id="estimate-geocode">Estimate queries</button>
@@ -552,21 +599,32 @@ async function renderSettingsBody() {
     const msg = document.getElementById("auto-name-msg");
     const btn = document.getElementById("run-auto-name");
     btn.disabled = true;
-    msg.textContent = "Naming places… this may take about a minute on first run.";
+    msg.textContent = "Starting naming job…";
     try {
       const result = await apiPost("/api/v1/places/auto-name", {}, deviceParams());
-      msg.textContent =
-        `Done — inherited ${result.places_inherited}, geocoded ${result.places_geocoded} ` +
-        `(${result.api_calls} API calls, ${result.cache_hits} cache hits).`;
-      if (result.errors?.length) {
-        msg.textContent += ` Errors: ${result.errors.join("; ")}`;
+      if (result.skipped && result.reason === "already_running") {
+        msg.textContent = "Naming is already in progress.";
+      } else {
+        msg.textContent =
+          `Done — inherited ${result.places_inherited}, geocoded ${result.places_geocoded} ` +
+          `(${result.api_calls} API calls, ${result.cache_hits} cache hits).`;
+        if (result.unnamed_skipped_short_stay) {
+          msg.textContent += ` ${result.unnamed_skipped_short_stay} skipped (<5 min total stay).`;
+        }
+        if (result.errors?.length) {
+          msg.textContent += ` Errors: ${result.errors.join("; ")}`;
+        }
       }
     } catch (err) {
       msg.textContent = err.message;
     } finally {
-      btn.disabled = false;
+      refreshAutoRenameStatus();
     }
   });
+
+  if (getToken() && getDeviceId()) {
+    refreshAutoRenameStatus();
+  }
 
   document.getElementById("test-connection").addEventListener("click", async () => {
     const msg = document.getElementById("settings-msg");
@@ -615,6 +673,7 @@ function normalizeRouteHash(route) {
 
 async function navigate() {
   try {
+    stopAutoRenamePolling();
     consumeSetupParams();
     const route = parseRoute();
     normalizeRouteHash(route);
