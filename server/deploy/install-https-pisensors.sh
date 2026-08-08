@@ -32,7 +32,7 @@ sudo apt-get update -qq
 sudo apt-get install -y certbot python3-certbot-nginx
 
 echo "==> Webroot for ACME challenge"
-sudo mkdir -p "${WEBROOT}"
+sudo mkdir -p "${WEBROOT}/.well-known/acme-challenge"
 sudo chown -R www-data:www-data "${WEBROOT}"
 
 echo "==> nginx site: ${NGINX_SITE}"
@@ -41,15 +41,58 @@ sudo ln -sf "${NGINX_SITE}" "${NGINX_ENABLED}"
 sudo nginx -t
 sudo systemctl reload nginx
 
-echo "==> Requesting certificate (HTTP-01 via webroot)"
-sudo certbot certonly \
-  --webroot \
-  -w "${WEBROOT}" \
-  -d "${DOMAIN}" \
-  --email "${EMAIL}" \
-  --agree-tos \
-  --non-interactive \
-  --keep-until-expiring
+echo "==> Requesting certificate"
+request_cert() {
+  if sudo certbot certonly \
+    --webroot \
+    -w "${WEBROOT}" \
+    -d "${DOMAIN}" \
+    --email "${EMAIL}" \
+    --agree-tos \
+    --non-interactive \
+    --keep-until-expiring; then
+    return 0
+  fi
+  echo ""
+  echo "==> HTTP-01 (port 80) failed"
+  echo "    Your ISP likely blocks inbound port 80."
+  echo "    Try TLS-ALPN-01 on port 443 instead:"
+  echo "      CERTBOT_EMAIL=${EMAIL} bash server/deploy/install-https-pisensors-acme.sh"
+  echo "    Or DNS challenge (no inbound ports):"
+  echo "      CERTBOT_EMAIL=${EMAIL} bash server/deploy/install-https-pisensors-dns.sh"
+  return 1
+}
+
+if [[ "${SKIP_CERT_REQUEST:-}" != "1" ]]; then
+  if ! request_cert; then
+    echo ""
+    echo "ERROR: Could not obtain certificate."
+    echo "  1. Router WAN IP must match kklasmei.mooo.com (check router status page)"
+    echo "  2. TCP 443 → 192.168.1.26:443 must be open from the internet"
+    echo "  3. If port 80 blocked by ISP, use acme.sh on port 443:"
+    echo "       CERTBOT_EMAIL=${EMAIL} bash server/deploy/install-https-pisensors-acme.sh"
+    echo "  4. Or DNS challenge (no inbound ports):"
+    echo "       CERTBOT_EMAIL=${EMAIL} bash server/deploy/install-https-pisensors-dns.sh"
+    exit 1
+  fi
+else
+  echo "==> Skipping certificate request (cert already obtained)"
+fi
+
+if [[ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then
+  echo "==> Creating default SSL options (certbot templates not present)"
+  sudo mkdir -p /etc/letsencrypt
+  sudo tee /etc/letsencrypt/options-ssl-nginx.conf >/dev/null <<'SSLOPTS'
+ssl_session_cache shared:le_nginx_SSL:10m;
+ssl_session_timeout 1440m;
+ssl_session_tickets off;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+SSLOPTS
+  if [[ ! -f /etc/letsencrypt/ssl-dhparams.pem ]]; then
+    sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+  fi
+fi
 
 echo "==> Installing full HTTPS nginx config"
 sudo tee "${NGINX_SITE}" >/dev/null <<EOF
