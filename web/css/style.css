@@ -89,7 +89,9 @@ a.brand:hover {
 }
 
 .period-date-row {
-  display: contents;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .period-nav {
@@ -108,13 +110,22 @@ a.brand:hover {
   position: relative;
   display: flex;
   align-items: center;
-  min-width: 10.5rem;
+  justify-content: center;
+  flex: 1;
+  min-width: 8rem;
   padding: 0.35rem 0.5rem;
   border-radius: 6px;
   font-size: 0.9rem;
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
+  text-align: center;
+}
+
+#period-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .period-label:hover {
@@ -327,12 +338,6 @@ button:hover { filter: brightness(1.08); }
     flex: 1;
     min-width: 0;
     justify-content: center;
-  }
-
-  #period-label-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .period-today {
