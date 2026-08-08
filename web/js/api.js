@@ -26,6 +26,54 @@ export function saveSettings({ token, deviceId, apiBase: base }) {
   if (base !== undefined) localStorage.setItem(STORAGE_API_BASE, base.trim());
 }
 
+function dashboardPath() {
+  const path = window.location.pathname.replace(/\/$/, "");
+  if (path.endsWith("/index.html")) {
+    return path.slice(0, -"/index.html".length) || "/";
+  }
+  return path || "/";
+}
+
+export function buildSetupUrl() {
+  const token = getToken();
+  const deviceId = getDeviceId();
+  if (!token || !deviceId) return null;
+
+  const params = new URLSearchParams();
+  params.set("token", token);
+  params.set("device", deviceId);
+
+  const storedBase = localStorage.getItem(STORAGE_API_BASE);
+  if (storedBase) params.set("apiBase", storedBase);
+
+  return `${window.location.origin}${dashboardPath()}/#/setup?${params.toString()}`;
+}
+
+/** Apply credentials from a one-time #/setup?... link, then strip them from the URL. */
+export function consumeSetupParams() {
+  const hash = window.location.hash.replace(/^#/, "");
+  const qIndex = hash.indexOf("?");
+  if (qIndex === -1) return false;
+
+  const route = hash.slice(0, qIndex);
+  if (route !== "/setup") return false;
+
+  const params = new URLSearchParams(hash.slice(qIndex + 1));
+  const token = params.get("token");
+  const device = params.get("device");
+  if (!token || !device) return false;
+
+  saveSettings({
+    token,
+    deviceId: device,
+    apiBase: params.get("apiBase") || "",
+  });
+
+  const cleanPath = window.location.pathname + window.location.search;
+  window.history.replaceState(null, "", `${cleanPath}#/`);
+  return true;
+}
+
 export async function apiGet(path, params = {}) {
   const token = getToken();
   if (!token) throw new Error("API token not configured — open Settings");

@@ -1,4 +1,4 @@
-import { apiGet, apiPut, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
+import { apiGet, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
 import { destroyMap, fitTrail, initMap, renderTrail } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import {
@@ -398,6 +398,26 @@ function renderSettings() {
   setBanner(null);
   destroyMap();
 
+  const setupUrl = buildSetupUrl();
+  const setupSection = setupUrl
+    ? `
+    <div class="panel setup-panel">
+      <h3>Set up phone or tablet</h3>
+      <p class="setup-help">
+        Scan the QR code or open the setup link on another device. Your token and device ID
+        are saved locally on that device — the link is cleared from the browser immediately.
+        Only use this on your home network or VPN.
+      </p>
+      <div class="setup-qr-wrap">
+        <canvas id="setup-qr" width="220" height="220" aria-label="Setup QR code"></canvas>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="secondary" id="copy-setup-link">Copy setup link</button>
+      </div>
+      <p id="setup-msg" style="font-size:0.9rem;color:var(--muted)"></p>
+    </div>`
+    : "";
+
   appEl.innerHTML = `
     <h1 class="page-title">Settings</h1>
     <div class="panel form-grid">
@@ -416,7 +436,27 @@ function renderSettings() {
       </div>
       <p id="settings-msg" style="font-size:0.9rem;color:var(--muted)"></p>
     </div>
+    ${setupSection}
   `;
+
+  if (setupUrl) {
+    import("https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm")
+      .then((QRCode) => QRCode.toCanvas(document.getElementById("setup-qr"), setupUrl, { width: 220, margin: 1 }))
+      .catch(() => {
+        const msg = document.getElementById("setup-msg");
+        if (msg) msg.textContent = "QR code unavailable — use Copy setup link instead.";
+      });
+
+    document.getElementById("copy-setup-link")?.addEventListener("click", async () => {
+      const msg = document.getElementById("setup-msg");
+      try {
+        await navigator.clipboard.writeText(setupUrl);
+        if (msg) msg.textContent = "Setup link copied.";
+      } catch {
+        if (msg) msg.textContent = "Could not copy — select and copy the link from the address bar after saving.";
+      }
+    });
+  }
 
   document.getElementById("save-settings").addEventListener("click", () => {
     saveSettings({
@@ -455,6 +495,7 @@ const routes = {
 };
 
 async function navigate() {
+  consumeSetupParams();
   destroyMap();
   const hash = window.location.hash.replace(/^#/, "") || "/";
   const route = routes[hash] ? hash : "/";
