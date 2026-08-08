@@ -24,6 +24,7 @@ DATABASE_PATH = Path(
         str(Path(__file__).resolve().parents[1] / "data" / "phone-locator.db"),
     )
 )
+TIMEZONE = os.environ.get("PHONE_LOCATOR_TIMEZONE", "America/Detroit")
 NOMINATIM_BASE_URL = os.environ.get(
     "PHONE_LOCATOR_NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"
 ).rstrip("/")
