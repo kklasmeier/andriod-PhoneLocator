@@ -20,21 +20,38 @@ export function formatSpeed(mps) {
   return `${mph.toFixed(0)} mph`;
 }
 
+const LOCALE = "en-US";
+const TIME_OPTS = { hour: "numeric", minute: "2-digit", hour12: true };
+const DATE_OPTS = { month: "short", day: "numeric" };
+
 export function formatTime(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+  const currentYear = new Date().getFullYear();
+  const datePart = d.toLocaleDateString(LOCALE, {
+    ...DATE_OPTS,
+    ...(d.getFullYear() !== currentYear ? { year: "numeric" } : {}),
   });
+  const timePart = d.toLocaleTimeString(LOCALE, TIME_OPTS);
+  return `${datePart}, ${timePart}`;
 }
 
 export function formatTimeShort(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return d.toLocaleTimeString(LOCALE, TIME_OPTS);
+}
+
+export function formatDaySeparator(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const currentYear = new Date().getFullYear();
+  const weekday = d.toLocaleDateString(LOCALE, { weekday: "long" });
+  const datePart = d.toLocaleDateString(LOCALE, {
+    ...DATE_OPTS,
+    ...(d.getFullYear() !== currentYear ? { year: "numeric" } : {}),
+  });
+  return `${weekday}, ${datePart}`;
 }
 
 export function relativeTime(iso) {

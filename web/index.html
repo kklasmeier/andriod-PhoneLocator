@@ -22,16 +22,19 @@
       <a href="#/history" data-route="/history">History</a>
       <a href="#/settings" data-route="/settings">Settings</a>
     </nav>
-    <div class="toolbar">
-      <label class="toolbar-label">
-        Period
-        <select id="period-select">
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="week">This week</option>
-          <option value="month">This month</option>
-        </select>
+    <div class="period-bar" id="period-bar">
+      <button type="button" class="period-nav secondary" id="period-prev" aria-label="Previous period">◀</button>
+      <label class="period-label" id="period-label" title="Pick a date">
+        <span id="period-label-text">Today</span>
+        <input type="date" id="period-date" class="period-date-input" aria-label="Select date" />
       </label>
+      <button type="button" class="period-nav secondary" id="period-next" aria-label="Next period">▶</button>
+      <button type="button" class="period-today secondary" id="period-today">Today</button>
+      <div class="period-granularity" role="group" aria-label="View by">
+        <button type="button" class="secondary active" data-granularity="day">Day</button>
+        <button type="button" class="secondary" data-granularity="week">Week</button>
+        <button type="button" class="secondary" data-granularity="month">Month</button>
+      </div>
     </div>
   </header>
 

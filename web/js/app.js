@@ -1,7 +1,9 @@
 import { apiGet, apiPut, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
 import { destroyMap, fitTrail, initMap, renderTrail } from "./map.js";
+import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import {
   escapeHtml,
+  formatDaySeparator,
   formatDistance,
   formatDuration,
   formatSpeed,
@@ -13,20 +15,8 @@ import {
 
 const appEl = document.getElementById("app");
 const bannerEl = document.getElementById("banner");
-const periodSelect = document.getElementById("period-select");
 
-let currentPeriod = localStorage.getItem("phoneLocator.period") || "today";
-periodSelect.value = currentPeriod;
-
-periodSelect.addEventListener("change", () => {
-  currentPeriod = periodSelect.value;
-  localStorage.setItem("phoneLocator.period", currentPeriod);
-  navigate();
-});
-
-function getPeriod() {
-  return currentPeriod;
-}
+initPeriodBar(() => navigate());
 
 function setBanner(message, kind = "info") {
   if (!message) {
@@ -57,7 +47,7 @@ async function renderHome() {
   setActiveNav("/");
   appEl.innerHTML = `<div class="loading">Loading dashboard…</div>`;
 
-  const data = await apiGet("/api/v1/stats/dashboard", deviceParams({ period: getPeriod() }));
+  const data = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
   const { latest, summary, status, stale_minutes: staleMinutes } = data;
 
   if (status === "stale") {
@@ -159,7 +149,7 @@ async function renderMapPage() {
     </div>
   `;
 
-  const dash = await apiGet("/api/v1/stats/dashboard", deviceParams({ period: getPeriod() }));
+  const dash = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
   const history = await apiGet("/api/v1/location/history", deviceParams({
     from: dash.from,
     to: dash.to,
@@ -176,18 +166,29 @@ async function renderTimeline() {
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading timeline…</div>`;
 
-  const period = getPeriod();
-  const items = await apiGet("/api/v1/visits", deviceParams({ from: period, limit: 100 }));
+  const range = getRange();
+  const items = await apiGet(
+    "/api/v1/visits",
+    deviceParams({ from: range.from, to: range.to, limit: range.visitsLimit })
+  );
 
   if (!items.items?.length) {
     appEl.innerHTML = `<h1 class="page-title">Timeline</h1><div class="empty">No visits or travel in this period</div>`;
     return;
   }
 
+  let lastDay = null;
   const rows = items.items
     .map((item) => {
+      const dayKey = localDateKey(item.started_at);
+      let separator = "";
+      if (dayKey !== lastDay) {
+        lastDay = dayKey;
+        separator = `<div class="timeline-day-separator">${escapeHtml(formatDaySeparator(item.started_at))}</div>`;
+      }
+
       if (item.kind === "travel") {
-        return `
+        return `${separator}
           <div class="timeline-item travel">
             <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
             <div>
@@ -197,7 +198,7 @@ async function renderTimeline() {
             <div class="timeline-time">${formatTimeShort(item.ended_at)}</div>
           </div>`;
       }
-      return `
+      return `${separator}
         <div class="timeline-item">
           <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
           <div>
@@ -283,7 +284,11 @@ async function renderTravel() {
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading travel…</div>`;
 
-  const data = await apiGet("/api/v1/travel", deviceParams({ from: getPeriod(), limit: 200 }));
+  const range = getRange();
+  const data = await apiGet(
+    "/api/v1/travel",
+    deviceParams({ from: range.from, to: range.to, limit: 200 })
+  );
   const segments = data.segments || [];
 
   if (!segments.length) {
@@ -328,7 +333,7 @@ async function renderHistory() {
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading history…</div>`;
 
-  const dash = await apiGet("/api/v1/stats/dashboard", deviceParams({ period: getPeriod() }));
+  const dash = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
   const data = await apiGet("/api/v1/location/history", deviceParams({
     from: dash.from,
     to: dash.to,
@@ -374,9 +379,18 @@ async function renderHistory() {
     const blob = new Blob([header + body], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `phone-locator-history-${getPeriod()}.csv`;
+    a.download = `phone-locator-history-${formatAnchorDateForExport()}.csv`;
     a.click();
   });
+}
+
+function formatAnchorDateForExport() {
+  const range = getRange();
+  const anchor = range.anchor;
+  const y = anchor.getFullYear();
+  const m = String(anchor.getMonth() + 1).padStart(2, "0");
+  const d = String(anchor.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}-${range.granularity}`;
 }
 
 function renderSettings() {

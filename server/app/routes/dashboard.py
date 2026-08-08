@@ -19,11 +19,31 @@ NO_DATA_HOURS = 24
 def dashboard(
     device_id: Annotated[str, Query(min_length=1, max_length=128)],
     _: Annotated[None, Depends(verify_api_token)],
-    period: Annotated[Literal["today", "yesterday", "week", "month"], Query()] = "today",
+    period: Annotated[Literal["today", "yesterday", "week", "month"] | None, Query()] = None,
+    from_value: Annotated[str | None, Query(alias="from")] = None,
+    to_value: Annotated[str | None, Query(alias="to")] = None,
+    include_week_teaser: Annotated[bool, Query()] = False,
 ) -> DashboardResponse:
     analytics_service.ensure_computed(device_id)
-    from_iso, to_iso = resolve_period(period)
-    summary = analytics_service.build_summary(device_id=device_id, period=period)
+
+    if from_value and to_value:
+        from_iso, to_iso = from_value, to_value
+        period_label = period or "custom"
+        summary = analytics_service.build_summary(
+            device_id=device_id,
+            period=period_label,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            include_week_teaser=include_week_teaser,
+        )
+    else:
+        period_label = period or "today"
+        from_iso, to_iso = resolve_period(period_label)
+        summary = analytics_service.build_summary(
+            device_id=device_id,
+            period=period_label,
+            include_week_teaser=include_week_teaser or period_label == "today",
+        )
 
     latest = database.get_latest_point(device_id)
 
@@ -41,7 +61,7 @@ def dashboard(
 
     return DashboardResponse(
         device_id=device_id,
-        period=period,
+        period=period_label,
         **{"from": from_iso},
         to=to_iso,
         latest=latest,

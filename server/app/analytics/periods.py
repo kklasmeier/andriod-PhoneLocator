@@ -43,7 +43,8 @@ def resolve_period(period: str, now: datetime | None = None) -> tuple[str, str]:
         start_local = yesterday
         end_local = yesterday.replace(hour=23, minute=59, second=59)
     elif period == "week":
-        start_local = (now - timedelta(days=now.weekday())).replace(
+        days_since_sunday = (now.weekday() + 1) % 7
+        start_local = (now - timedelta(days=days_since_sunday)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         end_local = now

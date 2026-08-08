@@ -39,9 +39,21 @@ def ensure_computed(device_id: str) -> None:
         recompute_device(device_id)
 
 
-def build_summary(device_id: str, period: str) -> dict:
+def build_summary(
+    device_id: str,
+    period: str | None = None,
+    *,
+    from_iso: str | None = None,
+    to_iso: str | None = None,
+    include_week_teaser: bool = False,
+) -> dict:
     ensure_computed(device_id)
-    from_iso, to_iso = resolve_period(period)
+    if from_iso is None or to_iso is None:
+        if period is None:
+            period = "today"
+        from_iso, to_iso = resolve_period(period)
+    else:
+        period = period or "custom"
 
     visits = database.get_visits(device_id, from_iso=from_iso, to_iso=to_iso)
     travels = database.get_travel_segments(device_id, from_iso=from_iso, to_iso=to_iso)
@@ -86,7 +98,7 @@ def build_summary(device_id: str, period: str) -> dict:
         "top_places": top_place_rows,
     }
 
-    if period == "today":
+    if include_week_teaser:
         week_from, week_to = resolve_period("week")
         week_visits = database.get_visits(device_id, from_iso=week_from, to_iso=week_to)
         week_travels = database.get_travel_segments(device_id, from_iso=week_from, to_iso=week_to)
