@@ -68,6 +68,13 @@ function formatMonthDay(date, includeYear = false) {
   return date.toLocaleDateString("en-US", opts);
 }
 
+function formatDayLabel(date) {
+  const currentYear = new Date().getFullYear();
+  const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+  const datePart = formatMonthDay(date, date.getFullYear() !== currentYear);
+  return `${weekday}, ${datePart}`;
+}
+
 function formatWeekRange(start, end) {
   const currentYear = new Date().getFullYear();
   const showYear =
@@ -90,7 +97,7 @@ export function formatPeriodLabel(granularity, anchor) {
   if (granularity === "day") {
     if (isToday(anchor)) return "Today";
     if (isYesterday(anchor)) return "Yesterday";
-    return formatMonthDay(anchor, anchor.getFullYear() !== currentYear);
+    return formatDayLabel(anchor);
   }
 
   if (granularity === "week") {

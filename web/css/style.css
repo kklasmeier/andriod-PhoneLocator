@@ -97,7 +97,7 @@ a:hover { text-decoration: underline; }
   position: relative;
   display: flex;
   align-items: center;
-  min-width: 7rem;
+  min-width: 10.5rem;
   padding: 0.35rem 0.5rem;
   border-radius: 6px;
   font-size: 0.9rem;
