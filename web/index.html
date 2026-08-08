@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="favicon.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="css/style.css?v=1.9.8" />
+  <link rel="stylesheet" href="css/style.css?v=1.9.9" />
 </head>
 <body>
   <header class="topbar">
@@ -26,13 +26,15 @@
       <a href="#/settings" data-route="/settings">Settings</a>
     </nav>
     <div class="period-bar" id="period-bar">
-      <button type="button" class="period-nav secondary" id="period-prev" aria-label="Previous period">◀</button>
-      <label class="period-label" id="period-label" title="Pick a date">
-        <span id="period-label-text">Today</span>
-        <input type="date" id="period-date" class="period-date-input" aria-label="Select date" />
-      </label>
-      <button type="button" class="period-nav secondary" id="period-next" aria-label="Next period">▶</button>
-      <button type="button" class="period-today secondary" id="period-today">Today</button>
+      <div class="period-date-row">
+        <button type="button" class="period-nav secondary" id="period-prev" aria-label="Previous period">◀</button>
+        <label class="period-label" id="period-label" title="Pick a date">
+          <span id="period-label-text">Today</span>
+          <input type="date" id="period-date" class="period-date-input" aria-label="Select date" />
+        </label>
+        <button type="button" class="period-nav secondary" id="period-next" aria-label="Next period">▶</button>
+        <button type="button" class="period-today secondary" id="period-today">Today</button>
+      </div>
       <div class="period-granularity" role="group" aria-label="View by">
         <button type="button" class="secondary active" data-granularity="day">Day</button>
         <button type="button" class="secondary" data-granularity="week">Week</button>
@@ -79,6 +81,6 @@
     })();
   </script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="js/app.js?v=1.9.8"></script>
+  <script type="module" src="js/app.js?v=1.9.9"></script>
 </body>
 </html>
