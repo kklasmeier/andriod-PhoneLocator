@@ -6,6 +6,7 @@ import com.klasmeier.phonelocator.ops.TrackingStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.TimeUnit
 
@@ -81,6 +82,50 @@ class TrackingStatusTest {
             nowEpochMs = now,
         )
         assertEquals(TrackingHealth.Error, health)
+    }
+
+    @Test
+    fun shouldShowSyncFailureNotification_falseWhenQueueEmpty() {
+        assertFalse(
+            TrackingStatus.shouldShowSyncFailureNotification(
+                queueCount = 0,
+                lastSuccessfulUploadMs = now - TimeUnit.HOURS.toMillis(2),
+                oldestQueuedEpochMs = null,
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldShowSyncFailureNotification_falseWhenRecentSuccess() {
+        assertFalse(
+            TrackingStatus.shouldShowSyncFailureNotification(
+                queueCount = 5,
+                lastSuccessfulUploadMs = now - TimeUnit.MINUTES.toMillis(10),
+                oldestQueuedEpochMs = now - TimeUnit.MINUTES.toMillis(20),
+                nowEpochMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldShowSyncFailureNotification_trueAfterThirtyMinutes() {
+        assertFalse(
+            TrackingStatus.shouldShowSyncFailureNotification(
+                queueCount = 3,
+                lastSuccessfulUploadMs = now - TimeUnit.MINUTES.toMillis(20),
+                oldestQueuedEpochMs = now - TimeUnit.MINUTES.toMillis(25),
+                nowEpochMs = now,
+            ),
+        )
+        assertTrue(
+            TrackingStatus.shouldShowSyncFailureNotification(
+                queueCount = 3,
+                lastSuccessfulUploadMs = now - TimeUnit.MINUTES.toMillis(35),
+                oldestQueuedEpochMs = now - TimeUnit.MINUTES.toMillis(40),
+                nowEpochMs = now,
+            ),
+        )
     }
 
     @Test

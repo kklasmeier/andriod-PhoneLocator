@@ -27,7 +27,10 @@ data class ProblemBanner(
 )
 
 object TrackingStatus {
-    /** No alert until uploads have been failing long enough to indicate a real backlog (e.g. VPN off). */
+    /** Show the system notification only after this long without a successful upload while points are queued. */
+    private val NOTIFICATION_BACKLOG_MS = TimeUnit.MINUTES.toMillis(30)
+
+    /** Status screen warning / error thresholds (unchanged). */
     private val BACKLOG_WARNING_MS = TimeUnit.HOURS.toMillis(4)
     private val BACKLOG_ERROR_MS = TimeUnit.HOURS.toMillis(8)
 
@@ -46,6 +49,21 @@ object TrackingStatus {
             }
         }
         return UploadStats24h(successes, failures)
+    }
+
+    /**
+     * True when points are queued and nothing has uploaded successfully for [NOTIFICATION_BACKLOG_MS].
+     * Used to decide whether the persistent notification should be visible.
+     */
+    fun shouldShowSyncFailureNotification(
+        queueCount: Int,
+        lastSuccessfulUploadMs: Long?,
+        oldestQueuedEpochMs: Long?,
+        nowEpochMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (queueCount == 0) return false
+        val backlogSinceMs = lastSuccessfulUploadMs ?: oldestQueuedEpochMs ?: return false
+        return nowEpochMs - backlogSinceMs >= NOTIFICATION_BACKLOG_MS
     }
 
     /**

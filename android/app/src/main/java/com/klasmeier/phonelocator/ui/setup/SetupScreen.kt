@@ -144,7 +144,7 @@ fun SetupScreen(onComplete: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Phone Locator setup")
-        Text("A persistent notification is required while tracking is active.")
+        Text("You’ll only get a notification if uploads are stuck (queued points for 30+ minutes).")
 
         OutlinedTextField(
             value = apiUrl,

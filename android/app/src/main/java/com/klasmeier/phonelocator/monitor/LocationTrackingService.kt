@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.ServiceCompat
 import com.klasmeier.phonelocator.BuildConfig
 import com.klasmeier.phonelocator.data.ServiceStateRepository
 import com.klasmeier.phonelocator.data.SettingsRepository
@@ -39,20 +40,24 @@ class LocationTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_SYNC_NOW -> {
-                startForegroundIfNeeded()
+                promoteForegroundMinimal()
                 startLoopIfNeeded()
-                scope.launch { uploadRepository.manualSync() }
+                scope.launch {
+                    uploadRepository.manualSync()
+                    applyNotificationPolicy()
+                }
                 return START_STICKY
             }
         }
 
-        startForegroundIfNeeded()
+        promoteForegroundMinimal()
         startLoopIfNeeded()
+        scope.launch { applyNotificationPolicy() }
         return START_STICKY
     }
 
-    private fun startForegroundIfNeeded() {
-        val notification = notificationHelper.buildForegroundNotification(queueCount = 0)
+    private fun promoteForegroundMinimal() {
+        val notification = notificationHelper.buildMinimalForegroundNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 TrackingNotificationHelper.NOTIFICATION_ID,
@@ -64,6 +69,32 @@ class LocationTrackingService : Service() {
         }
     }
 
+    private suspend fun applyNotificationPolicy() {
+        uploadRepository.applyNotificationPolicy(
+            onShowAlert = { queueCount, paused, lastSuccess, oldestQueued ->
+                val notification = notificationHelper.buildAlertNotification(
+                    queueCount,
+                    paused,
+                    lastSuccess,
+                    oldestQueued,
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        TrackingNotificationHelper.NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+                    )
+                } else {
+                    startForeground(TrackingNotificationHelper.NOTIFICATION_ID, notification)
+                }
+            },
+            onHide = {
+                notificationHelper.cancelNotification()
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            },
+        )
+    }
+
     private fun startLoopIfNeeded() {
         if (loopJob != null) return
         loopJob = scope.launch {
@@ -72,7 +103,7 @@ class LocationTrackingService : Service() {
             while (isActive) {
                 val settings = settingsRepository.snapshot()
                 if (!settings.setupComplete || settings.trackingPaused) {
-                    uploadRepository.refreshNotification()
+                    applyNotificationPolicy()
                     delay(5_000)
                     continue
                 }
@@ -85,12 +116,14 @@ class LocationTrackingService : Service() {
 
     private suspend fun runCycle(collect: Boolean) {
         if (collect) {
+            promoteForegroundMinimal()
             val collected = locationCollector.collect(appVersion = BuildConfig.VERSION_NAME)
             if (collected != null) {
                 uploadRepository.enqueue(collected)
             }
         }
         uploadRepository.flushQueue()
+        applyNotificationPolicy()
     }
 
     override fun onDestroy() {

@@ -2,7 +2,13 @@
 <resources>
     <string name="app_name">Phone Locator</string>
     <string name="notification_channel_name">Location tracking</string>
-    <string name="notification_channel_description">Shows when Phone Locator is sending your location</string>
+    <string name="notification_channel_description">Required while collecting location in the background</string>
+    <string name="notification_channel_alert_name">Upload alerts</string>
+    <string name="notification_channel_alert_description">Shown when location points could not be uploaded</string>
+    <string name="notification_running_silent">Running</string>
+    <string name="notification_paused">Paused</string>
+    <string name="notification_backlog_warning">Upload backlog · %1$d queued · check connection</string>
+    <string name="notification_backlog_error">Upload backlog · %1$d queued · check VPN</string>
     <string name="setup_title">Phone Locator setup</string>
     <string name="status_title">Status</string>
     <string name="settings_title">Settings</string>

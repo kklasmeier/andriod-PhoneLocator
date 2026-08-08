@@ -227,14 +227,40 @@ class UploadRepository(
     }
 
     private suspend fun updateNotification(queueCount: Int) {
+        applyNotificationPolicy()
+    }
+
+    suspend fun applyNotificationPolicy(
+        onShowAlert: (queueCount: Int, paused: Boolean, lastSuccessfulUploadMs: Long?, oldestQueuedEpochMs: Long?) -> Unit = { count, paused, last, oldest ->
+            TrackingNotificationHelper(appContext).showAlertNotification(
+                count,
+                paused,
+                last,
+                oldest,
+            )
+        },
+        onHide: () -> Unit = {
+            TrackingNotificationHelper(appContext).cancelNotification()
+        },
+    ) = withContext(Dispatchers.IO) {
         val settings = settingsRepository.snapshot()
         val oldest = database.uploadQueueDao().oldestCreatedEpochMs()
-        TrackingNotificationHelper(appContext).updateFromState(
-            queueCount = queueCount,
-            paused = settings.trackingPaused,
-            lastSuccessfulUploadMs = settings.lastSuccessfulUploadEpochMs,
-            oldestQueuedEpochMs = oldest,
+        val queueCount = database.uploadQueueDao().count()
+        val showAlert = com.klasmeier.phonelocator.ops.TrackingStatus.shouldShowSyncFailureNotification(
+            queueCount,
+            settings.lastSuccessfulUploadEpochMs,
+            oldest,
         )
+        if (showAlert) {
+            onShowAlert(
+                queueCount,
+                settings.trackingPaused,
+                settings.lastSuccessfulUploadEpochMs,
+                oldest,
+            )
+        } else {
+            onHide()
+        }
     }
 
     companion object {
