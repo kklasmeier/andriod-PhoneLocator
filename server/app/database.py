@@ -7,6 +7,13 @@ from typing import Any, Iterator
 from app import config
 from app.models import LocationPointIn, LocationPointOut
 
+HISTORY_POINT_COLUMNS = """
+    id, device_id, client_point_id, latitude, longitude, accuracy_m, altitude_m,
+    speed_mps, bearing_deg, location_provider, activity, battery_pct, battery_charging,
+    power_save_mode, network_type, wifi_ssid, cell_signal_dbm, app_version,
+    upload_attempt, queued_duration_sec, recorded_at, received_at
+"""
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS location_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -389,7 +396,7 @@ def get_history(
     from_ts: str | None = None,
     to_ts: str | None = None,
     limit: int = 500,
-) -> list[LocationPointOut]:
+) -> tuple[list[LocationPointOut], int, bool]:
     clauses = ["device_id = ?"]
     params: list[Any] = [device_id]
 
@@ -400,18 +407,49 @@ def get_history(
         clauses.append("recorded_at <= ?")
         params.append(to_ts)
 
-    params.append(limit)
-    sql = f"""
-        SELECT * FROM location_points
-        WHERE {' AND '.join(clauses)}
-        ORDER BY recorded_at ASC, id ASC
-        LIMIT ?
-    """
+    where_sql = " AND ".join(clauses)
 
     with get_connection() as conn:
-        rows = conn.execute(sql, params).fetchall()
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM location_points WHERE {where_sql}",
+            params,
+        ).fetchone()[0]
 
-    return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows]
+        if total == 0:
+            return [], 0, False
+
+        if total <= limit:
+            rows = conn.execute(
+                f"""
+                SELECT {HISTORY_POINT_COLUMNS}
+                FROM location_points
+                WHERE {where_sql}
+                ORDER BY recorded_at ASC, id ASC
+                LIMIT ?
+                """,
+                [*params, limit],
+            ).fetchall()
+            return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows], total, False
+
+        step = max(1, (total + limit - 1) // limit)
+        rows = conn.execute(
+            f"""
+            WITH ordered AS (
+                SELECT
+                    {HISTORY_POINT_COLUMNS},
+                    ROW_NUMBER() OVER (ORDER BY recorded_at ASC, id ASC) AS rn
+                FROM location_points
+                WHERE {where_sql}
+            )
+            SELECT {HISTORY_POINT_COLUMNS}
+            FROM ordered
+            WHERE (rn - 1) % ? = 0 OR rn = ?
+            ORDER BY recorded_at ASC, id ASC
+            """,
+            [*params, step, total],
+        ).fetchall()
+
+    return [LocationPointOut.from_row(_row_to_dict(row)) for row in rows], total, True
 
 
 def get_points_for_analytics(device_id: str) -> list[dict[str, Any]]:

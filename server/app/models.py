@@ -73,6 +73,8 @@ class LatestLocationResponse(BaseModel):
 class HistoryResponse(BaseModel):
     device_id: str
     count: int
+    total_count: int
+    sampled: bool = False
     points: list[LocationPointOut]
 
 

@@ -197,11 +197,18 @@ async function renderHome() {
   initMap("home-map");
   document.getElementById("fit-trail-btn")?.addEventListener("click", fitTrail);
 
+  const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({
     from: data.from,
     to: data.to,
-    limit: 2000,
+    limit: range.historyLimit,
   }));
+  if (history.sampled && status === "ok") {
+    setBanner(
+      `Map shows ${history.count.toLocaleString()} sampled points from ${history.total_count.toLocaleString()} in this period`,
+      "info"
+    );
+  }
   renderTrail(history.points || [], latest);
 }
 
@@ -219,11 +226,19 @@ async function renderMapPage() {
   `;
 
   const dash = await apiGet("/api/v1/stats/dashboard", deviceParams(getDashboardParams()));
+  const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({
     from: dash.from,
     to: dash.to,
-    limit: 5000,
+    limit: range.historyLimit,
   }));
+
+  if (history.sampled) {
+    setBanner(
+      `Map shows ${history.count.toLocaleString()} sampled points from ${history.total_count.toLocaleString()} in this period`,
+      "info"
+    );
+  }
 
   initMap("full-map", { tall: true });
   document.getElementById("fit-trail-btn")?.addEventListener("click", fitTrail);

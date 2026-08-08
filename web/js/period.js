@@ -220,6 +220,12 @@ function visitsLimit() {
   return 200;
 }
 
+function historyLimit() {
+  if (state.granularity === "year" || state.granularity === "month") return 5000;
+  if (state.granularity === "week") return 3000;
+  return 2000;
+}
+
 export function getRange() {
   const range = computeRange(state.granularity, state.anchor);
   return {
@@ -229,6 +235,7 @@ export function getRange() {
     label: formatPeriodLabel(state.granularity, state.anchor),
     isToday: state.granularity === "day" && isToday(state.anchor),
     visitsLimit: visitsLimit(),
+    historyLimit: historyLimit(),
   };
 }
 

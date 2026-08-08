@@ -47,10 +47,16 @@ def location_history(
     to_ts: Annotated[str | None, Query(alias="to")] = None,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
 ) -> HistoryResponse:
-    points = database.get_history(
+    points, total_count, sampled = database.get_history(
         device_id=device_id,
         from_ts=from_ts,
         to_ts=to_ts,
         limit=limit,
     )
-    return HistoryResponse(device_id=device_id, count=len(points), points=points)
+    return HistoryResponse(
+        device_id=device_id,
+        count=len(points),
+        total_count=total_count,
+        sampled=sampled,
+        points=points,
+    )

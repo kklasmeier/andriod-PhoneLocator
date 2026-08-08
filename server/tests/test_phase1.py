@@ -82,7 +82,10 @@ class Phase1ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(history.status_code, 200)
-        self.assertEqual(history.json()["count"], 1)
+        history_body = history.json()
+        self.assertEqual(history_body["count"], 1)
+        self.assertEqual(history_body["total_count"], 1)
+        self.assertFalse(history_body["sampled"])
 
 
 if __name__ == "__main__":
