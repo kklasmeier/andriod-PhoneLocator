@@ -102,7 +102,7 @@ def list_visits(
     _: Annotated[None, Depends(verify_api_token)],
     from_value: Annotated[str | None, Query(alias="from")] = None,
     to_value: Annotated[str | None, Query(alias="to")] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 100,
 ) -> VisitsTimelineResponse:
     from_iso, to_iso = resolve_range(from_value, to_value)
     items = analytics_service.build_visits_timeline(
@@ -120,7 +120,7 @@ def list_travel(
     _: Annotated[None, Depends(verify_api_token)],
     from_value: Annotated[str | None, Query(alias="from")] = None,
     to_value: Annotated[str | None, Query(alias="to")] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 200,
 ) -> TravelResponse:
     from_iso, to_iso = resolve_range(from_value, to_value)
     analytics_service.ensure_computed(device_id)

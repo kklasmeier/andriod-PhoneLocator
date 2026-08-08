@@ -396,6 +396,7 @@ async function renderTimeline() {
     apiGet("/api/v1/places", deviceParams()),
   ]);
   const placeById = Object.fromEntries((placesData.places || []).map((p) => [p.id, p]));
+  const truncated = items.count >= range.visitsLimit;
 
   if (!items.items?.length) {
     appEl.innerHTML = `<h1 class="page-title">Timeline</h1><div class="empty">No visits or travel in this period</div>`;
@@ -442,6 +443,7 @@ async function renderTimeline() {
 
   appEl.innerHTML = `
     <h1 class="page-title">Timeline</h1>
+    ${truncated ? `<p class="page-hint">Showing the first ${range.visitsLimit} events in this period. Try a shorter range for full detail.</p>` : ""}
     <div class="timeline">${rows}</div>`;
 
   appEl.querySelectorAll(".timeline-item.visit-item").forEach((el) => {
@@ -554,7 +556,7 @@ async function renderTravel() {
   const range = getRange();
   const data = await apiGet(
     "/api/v1/travel",
-    deviceParams({ from: range.from, to: range.to, limit: 200 })
+    deviceParams({ from: range.from, to: range.to, limit: range.visitsLimit })
   );
   const segments = data.segments || [];
 
