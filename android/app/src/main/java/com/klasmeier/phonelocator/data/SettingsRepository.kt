@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import com.klasmeier.phonelocator.ui.theme.AppThemeMode
 import java.util.UUID
 
 const val DEFAULT_API_URL = "http://192.168.1.26:8000/locator"
@@ -31,6 +32,7 @@ data class AppSettings(
     val lastSuccessfulUploadEpochMs: Long? = null,
     val lastUploadAttemptEpochMs: Long? = null,
     val lastCollectionEpochMs: Long? = null,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -44,6 +46,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_SUCCESS_UPLOAD_MS = longPreferencesKey("last_success_upload_ms")
         val LAST_UPLOAD_ATTEMPT_MS = longPreferencesKey("last_upload_attempt_ms")
         val LAST_COLLECTION_MS = longPreferencesKey("last_collection_ms")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs -> fromPrefs(prefs) }
@@ -86,6 +89,10 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.LAST_COLLECTION_MS] = epochMs }
     }
 
+    suspend fun setThemeMode(mode: AppThemeMode) {
+        context.dataStore.edit { prefs -> prefs[Keys.THEME_MODE] = mode.storageKey }
+    }
+
     suspend fun ensureDeviceId(): String {
         val current = snapshot()
         if (current.deviceId.isNotBlank()) return current.deviceId
@@ -105,6 +112,7 @@ class SettingsRepository(private val context: Context) {
             lastSuccessfulUploadEpochMs = prefs[Keys.LAST_SUCCESS_UPLOAD_MS],
             lastUploadAttemptEpochMs = prefs[Keys.LAST_UPLOAD_ATTEMPT_MS],
             lastCollectionEpochMs = prefs[Keys.LAST_COLLECTION_MS],
+            themeMode = AppThemeMode.fromStorage(prefs[Keys.THEME_MODE]),
         )
     }
 
