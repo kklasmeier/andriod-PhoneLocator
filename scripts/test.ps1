@@ -33,7 +33,7 @@ Write-Host "==> Installing server dependencies"
 
 Write-Host "==> Server unit tests"
 Push-Location $ServerDir
-& $VenvPython -m unittest discover -s tests -p "test_phase*.py" -v
+& $VenvPython -m unittest discover -s tests -p "test_*.py" -v
 if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
 
 if ($Integration) {

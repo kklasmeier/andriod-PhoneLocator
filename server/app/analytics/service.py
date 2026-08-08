@@ -2,6 +2,7 @@
 
 from app import database
 from app.analytics.engine import TrackPoint, assign_visit_place_ids, cluster_places, segment_points
+from app.analytics.presentation import apply_presentation_rules
 from app.analytics.periods import overlap_seconds, resolve_period
 
 
@@ -17,6 +18,7 @@ def recompute_device(device_id: str) -> None:
         for row in rows
     ]
     visits, travels = segment_points(points)
+    visits, travels = apply_presentation_rules(visits, travels)
     place_drafts = cluster_places(visits)
 
     database.replace_analytics(
