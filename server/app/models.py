@@ -246,11 +246,30 @@ class StatsSummaryResponse(BaseModel):
     to: str
     places_count: int
     travel_duration_sec: int
+    travel_distance_m: float = 0.0
+    travel_trips: int = 0
     stationary_duration_sec: int
     top_places: list[TopPlaceSummary]
     week_teaser: WeekTeaser | None = None
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class FrequentRouteOut(BaseModel):
+    from_place_name: str
+    to_place_name: str
+    trip_count: int
+    avg_duration_sec: int
+    total_distance_m: float
+
+
+class ReportsTravelOut(BaseModel):
+    trip_count: int
+    duration_sec: int
+    distance_m: float
+    frequent_routes: list[FrequentRouteOut] = Field(default_factory=list)
+    segments: list[TravelSegmentOut] = Field(default_factory=list)
+    recent_segments: list[TravelSegmentOut] = Field(default_factory=list)
 
 
 class ReportsResponse(BaseModel):
@@ -260,6 +279,8 @@ class ReportsResponse(BaseModel):
     to: str
     lifetime: LifetimeStatsResponse
     summary: StatsSummaryResponse
+    lifetime_travel: ReportsTravelOut
+    period_travel: ReportsTravelOut
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

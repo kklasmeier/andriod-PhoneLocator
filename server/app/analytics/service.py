@@ -118,6 +118,11 @@ def build_summary(
     travel_duration_sec = sum(
         overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) for t in travels
     )
+    travel_distance_m = sum(
+        float(t["distance_m"])
+        for t in travels
+        if overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) > 0
+    )
 
     ranked_places = sorted(place_durations.items(), key=lambda item: item[1], reverse=True)
     if max_places is not None:
@@ -141,6 +146,14 @@ def build_summary(
         "to": to_iso,
         "places_count": len(place_ids_seen),
         "travel_duration_sec": travel_duration_sec,
+        "travel_distance_m": travel_distance_m,
+        "travel_trips": len(
+            [
+                t
+                for t in travels
+                if overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) > 0
+            ]
+        ),
         "stationary_duration_sec": stationary_duration_sec,
         "top_places": top_place_rows,
     }
@@ -178,6 +191,7 @@ def build_travel_list(
     from_iso: str | None,
     to_iso: str | None,
     limit: int = 200,
+    order: str = "asc",
 ) -> list[dict]:
     ensure_computed(device_id)
     travels = database.get_travel_segments(
@@ -185,6 +199,7 @@ def build_travel_list(
         from_iso=from_iso,
         to_iso=to_iso,
         limit=limit,
+        order=order,
     )
     if not travels:
         return []
@@ -217,6 +232,63 @@ def build_travel_list(
         )
 
     return enriched
+
+
+def build_route_frequency(segments: list[dict], *, limit: int = 5) -> list[dict]:
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for segment in segments:
+        from_name = segment.get("from_place_name") or "Unknown"
+        to_name = segment.get("to_place_name") or "Unknown"
+        grouped.setdefault((from_name, to_name), []).append(segment)
+
+    routes: list[dict] = []
+    for (from_name, to_name), items in grouped.items():
+        total_duration = sum(int(item["duration_sec"]) for item in items)
+        routes.append(
+            {
+                "from_place_name": from_name,
+                "to_place_name": to_name,
+                "trip_count": len(items),
+                "avg_duration_sec": int(total_duration / len(items)),
+                "total_distance_m": float(sum(float(item["distance_m"]) for item in items)),
+            }
+        )
+
+    routes.sort(key=lambda row: (row["trip_count"], row["total_distance_m"]), reverse=True)
+    return routes[:limit]
+
+
+def build_reports_travel(
+    device_id: str,
+    from_iso: str | None = None,
+    to_iso: str | None = None,
+    *,
+    segment_limit: int = 200,
+    recent_limit: int = 30,
+    route_limit: int = 5,
+) -> dict:
+    segments = build_travel_list(
+        device_id=device_id,
+        from_iso=from_iso,
+        to_iso=to_iso,
+        limit=segment_limit,
+        order="asc",
+    )
+    recent_segments = build_travel_list(
+        device_id=device_id,
+        from_iso=from_iso,
+        to_iso=to_iso,
+        limit=recent_limit,
+        order="desc",
+    )
+    return {
+        "trip_count": len(segments),
+        "duration_sec": sum(int(segment["duration_sec"]) for segment in segments),
+        "distance_m": float(sum(float(segment["distance_m"]) for segment in segments)),
+        "frequent_routes": build_route_frequency(segments, limit=route_limit),
+        "segments": segments,
+        "recent_segments": recent_segments,
+    }
 
 
 def build_visits_timeline(

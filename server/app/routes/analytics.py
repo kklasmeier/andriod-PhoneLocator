@@ -13,10 +13,12 @@ from app.models import (
     DeviceSettingsResponse,
     DeviceSettingsUpdate,
     LifetimeStatsResponse,
+    FrequentRouteOut,
     PlaceOut,
     PlaceRenameRequest,
     PlacesResponse,
     ReportsResponse,
+    ReportsTravelOut,
     StatsSummaryResponse,
     TravelResponse,
     TravelSegmentOut,
@@ -28,6 +30,17 @@ visits_router = APIRouter(prefix="/api/v1/visits", tags=["analytics"])
 travel_router = APIRouter(prefix="/api/v1/travel", tags=["analytics"])
 stats_router = APIRouter(prefix="/api/v1/stats", tags=["analytics"])
 settings_router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
+
+
+def _reports_travel_out(data: dict) -> ReportsTravelOut:
+    return ReportsTravelOut(
+        trip_count=data["trip_count"],
+        duration_sec=data["duration_sec"],
+        distance_m=data["distance_m"],
+        frequent_routes=[FrequentRouteOut(**row) for row in data["frequent_routes"]],
+        segments=[TravelSegmentOut(**row) for row in data["segments"]],
+        recent_segments=[TravelSegmentOut(**row) for row in data["recent_segments"]],
+    )
 
 
 @places_router.get("", response_model=PlacesResponse)
@@ -188,6 +201,20 @@ def stats_reports(
             max_places=None,
         )
 
+    period_travel = analytics_service.build_reports_travel(
+        device_id,
+        from_iso,
+        to_iso,
+        segment_limit=200,
+    )
+    lifetime_travel = analytics_service.build_reports_travel(
+        device_id,
+        None,
+        None,
+        segment_limit=500,
+        recent_limit=30,
+    )
+
     return ReportsResponse(
         device_id=device_id,
         period=period_label,
@@ -195,4 +222,6 @@ def stats_reports(
         to=to_iso,
         lifetime=LifetimeStatsResponse(**lifetime),
         summary=StatsSummaryResponse(**summary),
+        lifetime_travel=_reports_travel_out(lifetime_travel),
+        period_travel=_reports_travel_out(period_travel),
     )

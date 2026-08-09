@@ -1317,7 +1317,7 @@ Home may link “View reports →” but does **not** show lifetime stats.
 |------|-------------|--------|
 | R1 | Lifetime SQL + cached snapshot + self-heal + `GET /stats/lifetime`, `/stats/reports` | **v1.9.12** |
 | R2 | `/reports` hub UI (all-time band + period section) | **v1.9.12** |
-| R3 | `/reports/time` — place ranking table, all-time toggle | Planned |
+| R3 | Travel sections on Reports (routes + trip tables) | **v1.9.15** |
 | R4 | Map heatmap layer + grid bin table | Planned |
 | R5 | `daily_stats` + `/reports/trends` | Planned |
 | R6 | `/reports/travel` charts + temporal heatmap | Planned |

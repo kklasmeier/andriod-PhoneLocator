@@ -814,6 +814,54 @@ button.ring-phone {
   color: var(--muted);
 }
 
+.reports-travel-section {
+  margin-top: 1.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.reports-travel-section h3 {
+  margin-top: 0;
+}
+
+.reports-travel-section h4 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.reports-section-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.reports-travel-table {
+  margin-bottom: 0.5rem;
+}
+
+.reports-travel-table table {
+  font-size: 0.85rem;
+}
+
+.reports-travel-card {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  margin-bottom: 0.45rem;
+}
+
+.reports-travel-route {
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+}
+
+.reports-travel-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .inline-rename {
   display: flex;
   gap: 0.35rem;

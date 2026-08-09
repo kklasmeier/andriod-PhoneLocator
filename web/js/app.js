@@ -360,13 +360,90 @@ function buildPlaceBars(places, lifetimeStyle = false) {
     .join("");
 }
 
+function buildFrequentRoutesHtml(routes) {
+  if (!routes?.length) {
+    return '<div class="empty">No trips yet</div>';
+  }
+  const rows = routes
+    .map(
+      (route) => `
+      <tr>
+        <td>${escapeHtml(route.from_place_name)} → ${escapeHtml(route.to_place_name)}</td>
+        <td>${route.trip_count}</td>
+        <td>${formatDuration(route.avg_duration_sec)}</td>
+        <td>${formatDistance(route.total_distance_m)}</td>
+      </tr>`
+    )
+    .join("");
+  return `
+    <div class="table-wrap reports-travel-table">
+      <table>
+        <thead><tr><th>Route</th><th>Trips</th><th>Avg time</th><th>Total distance</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildTravelSegmentsHtml(segments, { compact = false } = {}) {
+  if (!segments?.length) {
+    return '<div class="empty">No trips in this range</div>';
+  }
+  if (compact) {
+    return segments
+      .map(
+        (trip) => `
+        <div class="reports-travel-card">
+          <div class="reports-travel-route">${escapeHtml(trip.from_place_name || "Unknown")} → ${escapeHtml(trip.to_place_name || "Unknown")}</div>
+          <div class="reports-travel-meta">${formatTimeShort(trip.started_at)} · ${formatDuration(trip.duration_sec)} · ${formatDistance(trip.distance_m)}</div>
+        </div>`
+      )
+      .join("");
+  }
+  const rows = segments
+    .map(
+      (trip) => `
+      <tr>
+        <td>${formatTime(trip.started_at)}</td>
+        <td>${escapeHtml(trip.from_place_name || "Unknown")} → ${escapeHtml(trip.to_place_name || "Unknown")}</td>
+        <td>${formatDuration(trip.duration_sec)}</td>
+        <td>${formatDistance(trip.distance_m)}</td>
+        <td>${formatSpeed(trip.avg_speed_mps)}</td>
+      </tr>`
+    )
+    .join("");
+  return `
+    <div class="table-wrap reports-travel-table">
+      <table>
+        <thead><tr><th>Started</th><th>Route</th><th>Duration</th><th>Distance</th><th>Avg speed</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildTravelSection(travel, { lifetime = false } = {}) {
+  const tripsLabel = lifetime ? "Latest trips" : "Trips";
+  const tripItems = lifetime ? travel.recent_segments : travel.segments;
+  const tripsHint = lifetime
+    ? "Most recent trips across all time"
+    : "All trips in the selected period";
+  return `
+    <section class="reports-travel-section">
+      <h3>Travel <span class="section-count">(${travel.trip_count} trips · ${formatDistance(travel.distance_m)})</span></h3>
+      <h4>Frequent routes</h4>
+      ${buildFrequentRoutesHtml(travel.frequent_routes)}
+      <h4>${tripsLabel}</h4>
+      <p class="reports-section-hint">${tripsHint}</p>
+      ${buildTravelSegmentsHtml(tripItems, { compact: lifetime })}
+    </section>`;
+}
+
 async function renderReports() {
   setActiveNav("/reports");
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading reports…</div>`;
 
   const data = await apiGet("/api/v1/stats/reports", deviceParams(getDashboardParams()));
-  const { lifetime, summary } = data;
+  const { lifetime, summary, lifetime_travel: lifetimeTravel, period_travel: periodTravel } = data;
   const range = getRange();
   const activeView = getReportsView();
 
@@ -414,6 +491,7 @@ async function renderReports() {
       ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
       <h3>Top places</h3>
       ${lifetimeBars || '<div class="empty">No place visits yet</div>'}
+      ${buildTravelSection(lifetimeTravel, { lifetime: true })}
     </section>
     <section id="reports-period" class="reports-panel panel reports-period" role="tabpanel">
       <p class="reports-period-label">${escapeHtml(range.label)} <span class="muted-hint">— use the period bar above to change</span></p>
@@ -425,6 +503,7 @@ async function renderReports() {
         <div class="card">
           <div class="card-label">Travel</div>
           <div class="card-value">${formatDuration(summary.travel_duration_sec)}</div>
+          <div class="card-sub">${formatDistance(summary.travel_distance_m)} · ${summary.travel_trips} trips</div>
         </div>
         <div class="card">
           <div class="card-label">Stationary</div>
@@ -433,7 +512,8 @@ async function renderReports() {
       </div>
       <h3>Places <span class="section-count">(${summary.places_count})</span></h3>
       ${periodBars || '<div class="empty">No visits in this period</div>'}
-      <p class="reports-coming-soon">More charts (time breakdown, travel trends, heatmap) coming in future updates.</p>
+      ${buildTravelSection(periodTravel)}
+      <p class="reports-coming-soon">Trend charts and map heatmap coming in future updates.</p>
     </section>
   `;
 

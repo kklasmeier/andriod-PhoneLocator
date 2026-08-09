@@ -107,7 +107,10 @@ class LifetimeStatsTests(unittest.TestCase):
         self.assertIn("summary", body)
         self.assertEqual(body["lifetime"]["point_count"], 1)
         self.assertEqual(body["summary"]["device_id"], self.device_id)
-        self.assertIsInstance(body["summary"]["top_places"], list)
+        self.assertIn("period_travel", body)
+        self.assertIn("lifetime_travel", body)
+        self.assertIn("trip_count", body["period_travel"])
+        self.assertIsInstance(body["period_travel"]["segments"], list)
 
 
 if __name__ == "__main__":
