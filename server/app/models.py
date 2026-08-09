@@ -40,16 +40,27 @@ class BatchUploadResponse(BaseModel):
 class DeviceCommandSummary(BaseModel):
     id: str
     type: str
+    duration_sec: int | None = None
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> "DeviceCommandSummary":
+        return cls(
+            id=row["id"],
+            type=row["command_type"],
+            duration_sec=row.get("duration_sec"),
+        )
 
 
 class CommandCreateRequest(BaseModel):
     type: str = Field(default="ring", min_length=1, max_length=32)
+    duration_sec: int | None = Field(default=30, ge=5, le=300)
 
 
 class CommandAckRequest(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     message: str | None = Field(default=None, max_length=256)
+    stopped_by: str | None = Field(default=None, max_length=16)
 
 
 class CommandOut(BaseModel):
@@ -59,7 +70,11 @@ class CommandOut(BaseModel):
     status: str
     created_at: str
     expires_at: str
+    duration_sec: int | None = None
     delivered_at: str | None = None
+    ring_started_at: str | None = None
+    stop_requested: bool = False
+    stopped_by: str | None = None
     acked_at: str | None = None
     ack_latitude: float | None = None
     ack_longitude: float | None = None
@@ -67,14 +82,24 @@ class CommandOut(BaseModel):
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "CommandOut":
+        status = row["status"]
+        stop_requested_at = row.get("stop_requested_at")
+        stop_requested = (
+            stop_requested_at is not None
+            and status in ("pending", "delivered", "ringing")
+        )
         return cls(
             id=row["id"],
             device_id=row["device_id"],
             type=row["command_type"],
-            status=row["status"],
+            status=status,
             created_at=row["created_at"],
             expires_at=row["expires_at"],
+            duration_sec=row.get("duration_sec"),
             delivered_at=row.get("delivered_at"),
+            ring_started_at=row.get("ring_started_at"),
+            stop_requested=stop_requested,
+            stopped_by=row.get("stopped_by"),
             acked_at=row.get("acked_at"),
             ack_latitude=row.get("ack_latitude"),
             ack_longitude=row.get("ack_longitude"),

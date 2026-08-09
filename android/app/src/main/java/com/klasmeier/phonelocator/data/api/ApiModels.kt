@@ -35,6 +35,7 @@ data class BatchUploadRequest(
 data class DeviceCommandSummary(
     val id: String,
     val type: String,
+    @Json(name = "duration_sec") val durationSec: Int? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -55,6 +56,15 @@ data class CommandAckRequest(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val message: String? = null,
+    @Json(name = "stopped_by") val stoppedBy: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class CommandOut(
+    val id: String,
+    val status: String,
+    @Json(name = "duration_sec") val durationSec: Int? = null,
+    @Json(name = "stop_requested") val stopRequested: Boolean = false,
 )
 
 @JsonClass(generateAdapter = true)

@@ -193,6 +193,7 @@ def init_db() -> None:
         conn.executescript(SCHEMA_SQL)
         _migrate_device_settings(conn)
         _migrate_analytics_meta(conn)
+        _migrate_device_commands(conn)
         conn.commit()
 
 
@@ -220,6 +221,19 @@ def _migrate_device_settings(conn: sqlite3.Connection) -> None:
     for name, ddl in additions.items():
         if name not in columns:
             conn.execute(f"ALTER TABLE device_settings ADD COLUMN {name} {ddl}")
+
+
+def _migrate_device_commands(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(device_commands)")}
+    additions = {
+        "duration_sec": "INTEGER NOT NULL DEFAULT 30",
+        "stop_requested_at": "TEXT",
+        "stopped_by": "TEXT",
+        "ring_started_at": "TEXT",
+    }
+    for name, ddl in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE device_commands ADD COLUMN {name} {ddl}")
 
 
 def get_auto_rename_enabled(device_id: str) -> bool:
@@ -842,13 +856,21 @@ COMMAND_EXPIRY_MINUTES = 15
 COMMAND_RATE_LIMIT_SECONDS = 30
 
 
+def _parse_iso(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
 def _expire_stale_commands(conn: sqlite3.Connection, device_id: str | None = None) -> None:
-    now = utc_now_iso()
+    now = datetime.now(timezone.utc)
+    now_iso = utc_now_iso()
     if device_id is None:
         conn.execute(
             "UPDATE device_commands SET status = 'expired' WHERE status IN ('pending', 'delivered') AND expires_at < ?",
-            (now,),
+            (now_iso,),
         )
+        ringing_rows = conn.execute(
+            "SELECT id, ring_started_at, duration_sec FROM device_commands WHERE status = 'ringing'",
+        ).fetchall()
     else:
         conn.execute(
             """
@@ -856,11 +878,40 @@ def _expire_stale_commands(conn: sqlite3.Connection, device_id: str | None = Non
             SET status = 'expired'
             WHERE device_id = ? AND status IN ('pending', 'delivered') AND expires_at < ?
             """,
-            (device_id, now),
+            (device_id, now_iso),
         )
+        ringing_rows = conn.execute(
+            """
+            SELECT id, ring_started_at, duration_sec FROM device_commands
+            WHERE device_id = ? AND status = 'ringing'
+            """,
+            (device_id,),
+        ).fetchall()
+    for row in ringing_rows:
+        started_at = row["ring_started_at"]
+        if not started_at:
+            continue
+        duration_sec = row["duration_sec"] or 30
+        elapsed = (now - _parse_iso(started_at)).total_seconds()
+        if elapsed > duration_sec + 120:
+            conn.execute(
+                """
+                UPDATE device_commands
+                SET status = 'completed',
+                    acked_at = ?,
+                    ack_message = COALESCE(ack_message, 'auto-completed (no phone ack)')
+                WHERE id = ? AND status = 'ringing'
+                """,
+                (now_iso, row["id"]),
+            )
 
 
-def create_device_command(device_id: str, command_type: str = "ring") -> dict[str, Any]:
+def create_device_command(
+    device_id: str,
+    command_type: str = "ring",
+    *,
+    duration_sec: int = 30,
+) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     with get_connection() as conn:
         _expire_stale_commands(conn, device_id)
@@ -884,10 +935,10 @@ def create_device_command(device_id: str, command_type: str = "ring") -> dict[st
         conn.execute(
             """
             INSERT INTO device_commands (
-                id, device_id, command_type, status, created_at, expires_at
-            ) VALUES (?, ?, ?, 'pending', ?, ?)
+                id, device_id, command_type, status, created_at, expires_at, duration_sec
+            ) VALUES (?, ?, ?, 'pending', ?, ?, ?)
             """,
-            (command_id, device_id, command_type, created_at, expires_at),
+            (command_id, device_id, command_type, created_at, expires_at, duration_sec),
         )
         conn.commit()
         row = conn.execute(
@@ -943,6 +994,66 @@ def claim_pending_commands(device_id: str) -> list[dict[str, Any]]:
     return [dict(row) for row in delivered]
 
 
+def start_ring_command(command_id: str, device_id: str) -> dict[str, Any] | None:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        _expire_stale_commands(conn, device_id)
+        row = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ? AND device_id = ?",
+            (command_id, device_id),
+        ).fetchone()
+        if row is None:
+            return None
+        if row["status"] == "ringing":
+            return dict(row)
+        if row["status"] not in ("pending", "delivered"):
+            return dict(row)
+        conn.execute(
+            """
+            UPDATE device_commands
+            SET status = 'ringing',
+                ring_started_at = ?,
+                delivered_at = COALESCE(delivered_at, ?)
+            WHERE id = ? AND device_id = ?
+            """,
+            (now, now, command_id, device_id),
+        )
+        conn.commit()
+        updated = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ?",
+            (command_id,),
+        ).fetchone()
+    return dict(updated) if updated else None
+
+
+def request_command_stop(command_id: str, device_id: str) -> dict[str, Any] | None:
+    now = utc_now_iso()
+    with get_connection() as conn:
+        _expire_stale_commands(conn, device_id)
+        row = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ? AND device_id = ?",
+            (command_id, device_id),
+        ).fetchone()
+        if row is None:
+            return None
+        if row["status"] not in ("pending", "delivered", "ringing"):
+            return dict(row)
+        conn.execute(
+            """
+            UPDATE device_commands
+            SET stop_requested_at = ?
+            WHERE id = ? AND device_id = ?
+            """,
+            (now, command_id, device_id),
+        )
+        conn.commit()
+        updated = conn.execute(
+            "SELECT * FROM device_commands WHERE id = ?",
+            (command_id,),
+        ).fetchone()
+    return dict(updated) if updated else None
+
+
 def ack_device_command(
     command_id: str,
     device_id: str,
@@ -950,6 +1061,7 @@ def ack_device_command(
     latitude: float | None = None,
     longitude: float | None = None,
     message: str | None = None,
+    stopped_by: str | None = None,
 ) -> dict[str, Any] | None:
     now = utc_now_iso()
     with get_connection() as conn:
@@ -959,12 +1071,24 @@ def ack_device_command(
         ).fetchone()
         if row is None:
             return None
-        if row["status"] not in ("pending", "delivered"):
+        if row["status"] in ("stopped", "completed", "acked", "expired"):
             return dict(row)
+        if row["status"] not in ("pending", "delivered", "ringing"):
+            return dict(row)
+        if stopped_by in ("web", "phone"):
+            final_status = "stopped"
+            final_stopped_by = stopped_by
+        elif stopped_by == "completed":
+            final_status = "completed"
+            final_stopped_by = None
+        else:
+            final_status = "acked"
+            final_stopped_by = None
         conn.execute(
             """
             UPDATE device_commands
-            SET status = 'acked',
+            SET status = ?,
+                stopped_by = ?,
                 acked_at = ?,
                 ack_latitude = ?,
                 ack_longitude = ?,
@@ -972,7 +1096,17 @@ def ack_device_command(
                 delivered_at = COALESCE(delivered_at, ?)
             WHERE id = ? AND device_id = ?
             """,
-            (now, latitude, longitude, message, now, command_id, device_id),
+            (
+                final_status,
+                final_stopped_by,
+                now,
+                latitude,
+                longitude,
+                message,
+                now,
+                command_id,
+                device_id,
+            ),
         )
         conn.commit()
         updated = conn.execute(

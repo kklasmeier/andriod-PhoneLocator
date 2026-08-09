@@ -33,7 +33,7 @@ def upload_batch(
         duplicates=duplicates,
         errors=errors,
         commands=[
-            DeviceCommandSummary(id=row["id"], type=row["command_type"])
+            DeviceCommandSummary.from_row(row)
             for row in command_rows
         ],
     )

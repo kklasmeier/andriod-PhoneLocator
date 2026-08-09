@@ -21,6 +21,20 @@ interface LocationApi {
         @retrofit2.http.Path("deviceId") deviceId: String,
     ): PendingCommandsResponse
 
+    @GET("api/v1/devices/{deviceId}/commands/{commandId}")
+    suspend fun getCommand(
+        @Header("Authorization") authorization: String,
+        @retrofit2.http.Path("deviceId") deviceId: String,
+        @retrofit2.http.Path("commandId") commandId: String,
+    ): CommandOut
+
+    @POST("api/v1/devices/{deviceId}/commands/{commandId}/start")
+    suspend fun startRingCommand(
+        @Header("Authorization") authorization: String,
+        @retrofit2.http.Path("deviceId") deviceId: String,
+        @retrofit2.http.Path("commandId") commandId: String,
+    ): CommandOut
+
     @POST("api/v1/devices/{deviceId}/commands/{commandId}/ack")
     suspend fun ackCommand(
         @Header("Authorization") authorization: String,

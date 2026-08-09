@@ -12,5 +12,9 @@
     <string name="setup_title">Phone Locator setup</string>
     <string name="status_title">Status</string>
     <string name="settings_title">Settings</string>
-    <string name="log_title">Activity log</string>
+    <string name="ring_notification_channel_name">Ring phone</string>
+    <string name="ring_notification_channel_description">Shown while the phone is ringing from the locator website</string>
+    <string name="ring_notification_title">Phone Locator</string>
+    <string name="ring_notification_text">Ringing — tap Stop to silence</string>
+    <string name="ring_notification_stop">Stop</string>
 </resources>

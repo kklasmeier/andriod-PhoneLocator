@@ -115,51 +115,121 @@ function showError(err) {
 }
 
 let ringPollTimer = null;
+let activeRingCommandId = null;
+
+const RING_DURATION_STORAGE = "phoneLocator.ringDurationSec";
+const RING_DURATION_DEFAULT = 30;
+const RING_DURATION_MIN = 5;
+const RING_DURATION_MAX = 300;
+
+function getRingDurationSec() {
+  const raw = Number(localStorage.getItem(RING_DURATION_STORAGE));
+  if (!Number.isFinite(raw)) return RING_DURATION_DEFAULT;
+  return Math.min(RING_DURATION_MAX, Math.max(RING_DURATION_MIN, Math.round(raw)));
+}
+
+function setRingDurationSec(value) {
+  const sec = Math.min(RING_DURATION_MAX, Math.max(RING_DURATION_MIN, Math.round(Number(value) || RING_DURATION_DEFAULT)));
+  localStorage.setItem(RING_DURATION_STORAGE, String(sec));
+  return sec;
+}
 
 function clearRingPoll() {
   if (ringPollTimer) {
     clearTimeout(ringPollTimer);
     ringPollTimer = null;
   }
+  activeRingCommandId = null;
+  const stopBtn = document.getElementById("stop-ring-btn");
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.hidden = true;
+  }
+}
+
+function setStopRingVisible(visible) {
+  const stopBtn = document.getElementById("stop-ring-btn");
+  if (!stopBtn) return;
+  stopBtn.hidden = !visible;
+  stopBtn.disabled = !visible;
 }
 
 function updateRingStatus(statusEl, btn, status) {
-  if (status.status === "acked") {
-    statusEl.textContent = "Phone responded — location updated";
+  const terminalSuccess = ["acked", "stopped", "completed"].includes(status.status);
+  if (terminalSuccess) {
+    if (status.status === "stopped") {
+      const who = status.stopped_by === "phone" ? "on phone" : "from website";
+      statusEl.textContent = `Ring stopped ${who} — location updated`;
+    } else if (status.status === "completed") {
+      statusEl.textContent = "Ring finished — location updated";
+    } else {
+      statusEl.textContent = "Phone responded — location updated";
+    }
     statusEl.className = "ring-status ok";
     btn.disabled = false;
+    setStopRingVisible(false);
     return true;
   }
-  if (status.status === "delivered") {
-    statusEl.textContent = "Delivered to phone — ringing…";
+  if (status.status === "ringing") {
+    statusEl.textContent = "Phone is ringing…";
     statusEl.className = "ring-status pending";
+    setStopRingVisible(true);
+    return false;
+  }
+  if (status.status === "delivered") {
+    statusEl.textContent = "Delivered to phone — starting ring…";
+    statusEl.className = "ring-status pending";
+    setStopRingVisible(true);
     return false;
   }
   if (status.status === "pending") {
     statusEl.textContent = "Queued — waiting for phone sync…";
     statusEl.className = "ring-status pending";
+    setStopRingVisible(true);
     return false;
   }
   if (status.status === "expired") {
     statusEl.textContent = "Command expired before phone responded";
     statusEl.className = "ring-status error";
     btn.disabled = false;
+    setStopRingVisible(false);
     return true;
   }
   if (status.status === "timeout") {
     statusEl.textContent = "Timed out — phone may be offline";
     statusEl.className = "ring-status error";
     btn.disabled = false;
+    setStopRingVisible(false);
     return true;
   }
   statusEl.textContent = status.message || "Ring failed";
   statusEl.className = "ring-status error";
   btn.disabled = false;
+  setStopRingVisible(false);
   return true;
+}
+
+async function stopRingFromWeb() {
+  const commandId = activeRingCommandId;
+  const statusEl = document.getElementById("ring-status");
+  const stopBtn = document.getElementById("stop-ring-btn");
+  if (!commandId || !statusEl || !stopBtn) return;
+  stopBtn.disabled = true;
+  statusEl.textContent = "Requesting stop…";
+  try {
+    const deviceId = getDeviceId();
+    await apiPost(`/api/v1/devices/${deviceId}/commands/${commandId}/stop`, {});
+    statusEl.textContent = "Stop requested — waiting for phone…";
+  } catch (err) {
+    statusEl.textContent = err?.message || String(err);
+    statusEl.className = "ring-status error";
+    stopBtn.disabled = false;
+  }
 }
 
 async function pollRingCommand(commandId, statusEl, btn) {
   const deviceId = getDeviceId();
+  activeRingCommandId = commandId;
   let attempt = 0;
   const poll = async () => {
     try {
@@ -167,7 +237,7 @@ async function pollRingCommand(commandId, statusEl, btn) {
       const done = updateRingStatus(statusEl, btn, status);
       if (done) {
         clearRingPoll();
-        if (status.status === "acked") {
+        if (["acked", "stopped", "completed"].includes(status.status)) {
           const range = getRange();
           const [latest, history] = await Promise.all([
             apiGet("/api/v1/location/latest", deviceParams()),
@@ -183,7 +253,7 @@ async function pollRingCommand(commandId, statusEl, btn) {
         return;
       }
       attempt += 1;
-      if (attempt >= 90) {
+      if (attempt >= 300) {
         updateRingStatus(statusEl, btn, { status: "timeout" });
         clearRingPoll();
         return;
@@ -198,7 +268,8 @@ async function pollRingCommand(commandId, statusEl, btn) {
 }
 
 async function ringPhone() {
-  if (!confirm("Ring this phone? It will sound and vibrate on the next sync (usually within a few minutes).")) {
+  const durationSec = getRingDurationSec();
+  if (!confirm(`Ring this phone for up to ${durationSec} seconds? It will sound on the next sync (usually within a few minutes).`)) {
     return;
   }
   const btn = document.getElementById("ring-phone-btn");
@@ -212,7 +283,12 @@ async function ringPhone() {
 
   try {
     const deviceId = getDeviceId();
-    const created = await apiPost(`/api/v1/devices/${deviceId}/commands`, { type: "ring" });
+    const created = await apiPost(`/api/v1/devices/${deviceId}/commands`, {
+      type: "ring",
+      duration_sec: durationSec,
+    });
+    activeRingCommandId = created.id;
+    setStopRingVisible(true);
     statusEl.textContent = "Waiting for phone to respond…";
     pollRingCommand(created.id, statusEl, btn);
   } catch (err) {
@@ -297,6 +373,7 @@ async function renderHome() {
       <div class="map-panel home">
         <div class="map-controls">
           <button type="button" class="ring-phone" id="ring-phone-btn">Ring phone</button>
+          <button type="button" class="secondary stop-ring" id="stop-ring-btn" hidden disabled>Stop ringing</button>
           <button type="button" class="secondary" id="fit-trail-btn">Fit trail</button>
           <span id="ring-status" class="ring-status" aria-live="polite"></span>
         </div>
@@ -314,6 +391,7 @@ async function renderHome() {
   initMap("home-map");
   document.getElementById("fit-trail-btn")?.addEventListener("click", fitTrail);
   document.getElementById("ring-phone-btn")?.addEventListener("click", ringPhone);
+  document.getElementById("stop-ring-btn")?.addEventListener("click", stopRingFromWeb);
 
   const range = getRange();
   const history = await apiGet("/api/v1/location/history", deviceParams({
@@ -1214,6 +1292,15 @@ async function renderSettingsBody() {
       <p id="settings-msg" style="font-size:0.9rem;color:var(--muted)"></p>
     </div>
     <div class="panel form-grid">
+      <h3>Ring phone</h3>
+      <label>Max ring duration (seconds)
+        <input id="cfg-ring-duration" type="number" min="${RING_DURATION_MIN}" max="${RING_DURATION_MAX}" value="${getRingDurationSec()}" />
+      </label>
+      <p class="setup-help">
+        How long the phone rings if not stopped (${RING_DURATION_MIN}–${RING_DURATION_MAX} seconds). The phone still receives the ring command on its normal GPS sync (~every 3 minutes). While ringing, it checks every 5 seconds whether you pressed Stop on the website.
+      </p>
+    </div>
+    <div class="panel form-grid">
       <h3>Map</h3>
       <label>Basemap
         <select id="cfg-basemap">${basemapOptions}</select>
@@ -1270,7 +1357,14 @@ async function renderSettingsBody() {
       deviceId: document.getElementById("cfg-device").value,
       apiBase: document.getElementById("cfg-api-base").value,
     });
+    const ringInput = document.getElementById("cfg-ring-duration");
+    if (ringInput) setRingDurationSec(ringInput.value);
     document.getElementById("settings-msg").textContent = "Saved.";
+  });
+
+  document.getElementById("cfg-ring-duration")?.addEventListener("change", (event) => {
+    setRingDurationSec(event.target.value);
+    event.target.value = String(getRingDurationSec());
   });
 
   document.getElementById("cfg-basemap")?.addEventListener("change", (event) => {

@@ -1,8 +1,10 @@
 # Phone Locator — Project Design
 
 **Project:** Self-hosted Android phone location tracker  
-**Last updated:** August 7, 2026  
+**Last updated:** July 26, 2026  
 **Status:** Phases **1–2, 4 complete**; Phase **3 deferred** (VPN-only remote access); Phases **5–9** not started  
+
+**Revision notes (Jul 26):** **v1.9.25** — Controllable ring sessions: configurable max duration (5–300s, default 30) in web Settings; website **Stop ringing** during active session; phone rings via foreground service with notification Stop; while ringing only, phone polls command status every 5s for web stop (GPS sync unchanged ~3 min). Android **v0.1.8**.  
 
 **Revision notes (Aug 7):** Phase 4 app dashboard — status health indicators, 24h upload success %, service uptime, problem banners, activity log clear, settings permissions/advanced. Phase 3 public HTTPS deferred — remote access via WireGuard VPN and LAN API URL. Phases 1–2 shipped and verified on piSensors + Android.  
 

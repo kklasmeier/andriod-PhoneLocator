@@ -2,7 +2,7 @@ package com.klasmeier.phonelocator.notification
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.Ringtone
+import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
@@ -15,68 +15,61 @@ import androidx.core.content.getSystemService
 class RingAlarmHelper(private val context: Context) {
     private val appContext = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
+    private var mediaPlayer: MediaPlayer? = null
+    private var stopRunnable: Runnable? = null
 
-    fun ring(durationMs: Long = RING_DURATION_MS) {
+    fun start(durationMs: Long) {
+        stop()
         vibrate(durationMs)
-        val ringtone = defaultRingtone() ?: return
-        ringtone.play()
-        handler.postDelayed({
-            if (ringtone.isPlaying) {
-                ringtone.stop()
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: return
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(appContext, uri)
+            isLooping = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
             }
-        }, durationMs)
+            prepare()
+            start()
+        }
+        stopRunnable = Runnable { stop() }
+        handler.postDelayed(stopRunnable!!, durationMs)
     }
 
-    private fun defaultRingtone(): Ringtone? {
-        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: return null
-        val ringtone = RingtoneManager.getRingtone(appContext, uri) ?: return null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            ringtone.audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
+    fun stop() {
+        stopRunnable?.let { handler.removeCallbacks(it) }
+        stopRunnable = null
+        mediaPlayer?.run {
+            if (isPlaying) stop()
+            release()
         }
-        return ringtone
+        mediaPlayer = null
+        cancelVibration()
     }
+
+    val isPlaying: Boolean
+        get() = mediaPlayer?.isPlaying == true
 
     private fun vibrate(durationMs: Long) {
         val pattern = longArrayOf(0, 500, 250, 500, 250, 500, 250, 500)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibrator = appContext.getSystemService<VibratorManager>()?.defaultVibrator
-            vibrator?.vibrate(
-                VibrationEffect.createWaveform(pattern, -1),
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .build(),
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            val vibrator = appContext.getSystemService<Vibrator>()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(
-                    VibrationEffect.createWaveform(pattern, -1),
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build(),
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(pattern, -1)
-            }
-        }
+        val effect = VibrationEffect.createWaveform(pattern, 0)
+        vibrator()?.vibrate(effect)
         handler.postDelayed({ cancelVibration() }, durationMs)
     }
 
     private fun cancelVibration() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            appContext.getSystemService<VibratorManager>()?.defaultVibrator?.cancel()
-        } else {
-            @Suppress("DEPRECATION")
-            appContext.getSystemService<Vibrator>()?.cancel()
-        }
+        vibrator()?.cancel()
     }
 
-    companion object {
-        private const val RING_DURATION_MS = 30_000L
-    }
+    private fun vibrator(): Vibrator? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            appContext.getSystemService<VibratorManager>()?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            appContext.getSystemService<Vibrator>()
+        }
 }

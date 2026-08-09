@@ -5,12 +5,11 @@ import com.klasmeier.phonelocator.BuildConfig
 import com.klasmeier.phonelocator.data.SettingsRepository
 import com.klasmeier.phonelocator.data.api.ApiClientFactory
 import com.klasmeier.phonelocator.data.api.BatchUploadRequest
-import com.klasmeier.phonelocator.data.api.CommandAckRequest
 import com.klasmeier.phonelocator.data.api.DeviceCommandSummary
 import com.klasmeier.phonelocator.data.api.LocationPointPayload
 import com.klasmeier.phonelocator.location.CollectedLocation
 import com.klasmeier.phonelocator.location.LocationCollector
-import com.klasmeier.phonelocator.notification.RingAlarmHelper
+import com.klasmeier.phonelocator.notification.RingForegroundService
 import com.klasmeier.phonelocator.data.db.ActivityLogEntity
 import com.klasmeier.phonelocator.data.db.AppDatabase
 import com.klasmeier.phonelocator.data.db.LatestReadingEntity
@@ -140,13 +139,13 @@ class UploadRepository(
                 pollAndProcessCommands(api, auth, deviceId)
             }
             val remaining = database.uploadQueueDao().count()
-            updateNotification(remaining)
+            updateNotification()
             UploadResult(response.accepted, response.duplicates, remaining)
         } catch (exc: Exception) {
             database.uploadQueueDao().incrementAttempts(pending.map { it.clientPointId })
             logUploadFailureIfBacklog(exc.message ?: "upload error")
             val remaining = database.uploadQueueDao().count()
-            updateNotification(remaining)
+            updateNotification()
             UploadResult(0, 0, remaining)
         }
     }
@@ -174,43 +173,21 @@ class UploadRepository(
     ) {
         for (command in commands) {
             when (command.type) {
-                "ring" -> handleRingCommand(api, auth, deviceId, command.id)
+                "ring" -> handleRingCommand(command)
                 else -> log("error", "Unknown command type: ${command.type}")
             }
         }
     }
 
-    private suspend fun handleRingCommand(
-        api: com.klasmeier.phonelocator.data.api.LocationApi,
-        auth: String,
-        deviceId: String,
-        commandId: String,
-    ) {
-        RingAlarmHelper(appContext).ring()
-        var latitude: Double? = null
-        var longitude: Double? = null
+    private suspend fun handleRingCommand(command: DeviceCommandSummary) {
         val collected = LocationCollector(appContext).collect(appVersion = BuildConfig.VERSION_NAME)
         if (collected != null) {
             enqueue(collected)
             flushQueue(logOnSuccess = false, checkPendingCommands = false)
-            latitude = collected.payload.latitude
-            longitude = collected.payload.longitude
         }
-        try {
-            api.ackCommand(
-                authorization = auth,
-                deviceId = deviceId,
-                commandId = commandId,
-                body = CommandAckRequest(
-                    latitude = latitude,
-                    longitude = longitude,
-                    message = if (collected != null) "ringing" else "ringing (no fresh location)",
-                ),
-            )
-            log("info", "Ring command acknowledged")
-        } catch (exc: Exception) {
-            log("error", "Ring ack failed — ${exc.message ?: "unknown error"}")
-        }
+        val durationSec = command.durationSec ?: 30
+        RingForegroundService.start(appContext, command.id, durationSec)
+        log("info", "Ring command started (${durationSec}s max)")
     }
 
     suspend fun manualSync(): ManualSyncResult = withContext(Dispatchers.IO) {
@@ -232,7 +209,7 @@ class UploadRepository(
                 else -> "Manual sync: could not get location"
             }
             log(if (sent > 0) "success" else "error", message)
-            updateNotification(upload.remainingQueue)
+            updateNotification()
             return@withContext ManualSyncResult(collected = false, upload = upload, message = message)
         }
 
@@ -256,7 +233,7 @@ class UploadRepository(
     }
 
     suspend fun refreshNotification() = withContext(Dispatchers.IO) {
-        updateNotification(database.uploadQueueDao().count())
+        updateNotification()
     }
 
     suspend fun queueCount(): Int = withContext(Dispatchers.IO) {
@@ -306,7 +283,7 @@ class UploadRepository(
         }
     }
 
-    private suspend fun updateNotification(queueCount: Int) {
+    private suspend fun updateNotification() {
         applyNotificationPolicy()
     }
 

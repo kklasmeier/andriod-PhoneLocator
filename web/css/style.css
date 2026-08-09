@@ -748,6 +748,11 @@ button.ring-phone {
 .ring-status.ok { color: #86efac; }
 .ring-status.error { color: #fca5a5; }
 
+button.stop-ring {
+  border-color: #fca5a5;
+  color: #fecaca;
+}
+
 .lifetime-band {
   margin-bottom: 0;
 }
