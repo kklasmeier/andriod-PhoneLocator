@@ -552,6 +552,8 @@ def replace_analytics(
     from app.analytics.constants import PLACE_CLUSTER_RADIUS_M
     from app.analytics.engine import assign_visit_place_ids
     from app.analytics.geo import haversine_m
+    from app.analytics.travel_labels import is_local_loop_travel
+    from app.analytics.travel_links import match_adjacent_visit_ids
 
     received_at = utc_now_iso()
 
@@ -628,12 +630,13 @@ def replace_analytics(
             inserted_visits.append(
                 {
                     "id": cursor.lastrowid,
+                    "place_id": place_id,
                     "started_at": visit.started_at,
                     "ended_at": visit.ended_at,
                 }
             )
 
-        from app.analytics.travel_links import match_adjacent_visit_ids
+        visits_by_id = {row["id"]: row for row in inserted_visits}
 
         for travel in travels:
             from_visit_id, to_visit_id = match_adjacent_visit_ids(
@@ -641,6 +644,14 @@ def replace_analytics(
                 travel.ended_at,
                 inserted_visits,
             )
+            from_visit = visits_by_id.get(from_visit_id) if from_visit_id else None
+            to_visit = visits_by_id.get(to_visit_id) if to_visit_id else None
+            if from_visit and to_visit and is_local_loop_travel(
+                from_place_id=from_visit.get("place_id"),
+                to_place_id=to_visit.get("place_id"),
+                distance_m=travel.distance_m,
+            ):
+                continue
             conn.execute(
                 """
                 INSERT INTO travel_segments (

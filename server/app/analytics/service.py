@@ -8,6 +8,7 @@ from app.analytics.auto_naming import auto_rename_places
 from app.analytics.engine import TrackPoint, assign_visit_place_ids, cluster_places, segment_points
 from app.analytics.presentation import apply_presentation_rules
 from app.analytics.periods import overlap_seconds, resolve_period
+from app.analytics.travel_labels import enrich_travel_segment
 from app.analytics.travel_links import match_adjacent_visit_ids
 
 logger = logging.getLogger(__name__)
@@ -192,6 +193,8 @@ def build_travel_list(
     to_iso: str | None,
     limit: int = 200,
     order: str = "asc",
+    *,
+    include_local: bool = False,
 ) -> list[dict]:
     ensure_computed(device_id)
     travels = database.get_travel_segments(
@@ -223,31 +226,45 @@ def build_travel_list(
             if to_visit is None and to_id is not None:
                 to_visit = visits_by_id.get(to_id)
 
-        enriched.append(
-            {
-                **travel,
-                "from_place_name": _place_name_for_visit(from_visit, places_by_id) or "Unknown",
-                "to_place_name": _place_name_for_visit(to_visit, places_by_id) or "Unknown",
-            }
+        from_name = _place_name_for_visit(from_visit, places_by_id) or "Unknown"
+        to_name = _place_name_for_visit(to_visit, places_by_id) or "Unknown"
+        from_place_id = from_visit.get("place_id") if from_visit else None
+        to_place_id = to_visit.get("place_id") if to_visit else None
+        row = enrich_travel_segment(
+            travel,
+            from_place_name=from_name,
+            to_place_name=to_name,
+            from_place_id=from_place_id,
+            to_place_id=to_place_id,
         )
+        if not include_local and row.get("route_kind") == "local":
+            continue
+        enriched.append(row)
 
     return enriched
 
 
 def build_route_frequency(segments: list[dict], *, limit: int = 5) -> list[dict]:
-    grouped: dict[tuple[str, str], list[dict]] = {}
+    grouped: dict[str, list[dict]] = {}
     for segment in segments:
-        from_name = segment.get("from_place_name") or "Unknown"
-        to_name = segment.get("to_place_name") or "Unknown"
-        grouped.setdefault((from_name, to_name), []).append(segment)
+        if segment.get("route_kind") == "local":
+            continue
+        label = segment.get("route_label")
+        if not label:
+            from_name = segment.get("from_place_name") or "Unknown"
+            to_name = segment.get("to_place_name") or "Unknown"
+            label = f"{from_name} → {to_name}"
+        grouped.setdefault(label, []).append(segment)
 
     routes: list[dict] = []
-    for (from_name, to_name), items in grouped.items():
+    for label, items in grouped.items():
         total_duration = sum(int(item["duration_sec"]) for item in items)
+        sample = items[0]
         routes.append(
             {
-                "from_place_name": from_name,
-                "to_place_name": to_name,
+                "route_label": label,
+                "from_place_name": sample.get("from_place_name") or "Unknown",
+                "to_place_name": sample.get("to_place_name") or "Unknown",
                 "trip_count": len(items),
                 "avg_duration_sec": int(total_duration / len(items)),
                 "total_distance_m": float(sum(float(item["distance_m"]) for item in items)),

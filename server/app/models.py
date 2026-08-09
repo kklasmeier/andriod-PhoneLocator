@@ -185,6 +185,8 @@ class TravelSegmentOut(BaseModel):
     to_visit_id: int | None = None
     from_place_name: str | None = None
     to_place_name: str | None = None
+    route_label: str | None = None
+    route_kind: str | None = None
     started_at: str
     ended_at: str
     duration_sec: int
@@ -256,6 +258,7 @@ class StatsSummaryResponse(BaseModel):
 
 
 class FrequentRouteOut(BaseModel):
+    route_label: str
     from_place_name: str
     to_place_name: str
     trip_count: int

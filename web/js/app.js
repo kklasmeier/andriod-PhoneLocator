@@ -368,7 +368,7 @@ function buildFrequentRoutesHtml(routes) {
     .map(
       (route) => `
       <tr>
-        <td>${escapeHtml(route.from_place_name)} → ${escapeHtml(route.to_place_name)}</td>
+        <td>${escapeHtml(route.route_label || `${route.from_place_name} → ${route.to_place_name}`)}</td>
         <td>${route.trip_count}</td>
         <td>${formatDuration(route.avg_duration_sec)}</td>
         <td>${formatDistance(route.total_distance_m)}</td>
@@ -393,7 +393,7 @@ function buildTravelSegmentsHtml(segments, { compact = false } = {}) {
       .map(
         (trip) => `
         <div class="reports-travel-card">
-          <div class="reports-travel-route">${escapeHtml(trip.from_place_name || "Unknown")} → ${escapeHtml(trip.to_place_name || "Unknown")}</div>
+          <div class="reports-travel-route">${escapeHtml(trip.route_label || `${trip.from_place_name || "Unknown"} → ${trip.to_place_name || "Unknown"}`)}</div>
           <div class="reports-travel-meta">${formatTimeShort(trip.started_at)} · ${formatDuration(trip.duration_sec)} · ${formatDistance(trip.distance_m)}</div>
         </div>`
       )
@@ -404,7 +404,7 @@ function buildTravelSegmentsHtml(segments, { compact = false } = {}) {
       (trip) => `
       <tr>
         <td>${formatTime(trip.started_at)}</td>
-        <td>${escapeHtml(trip.from_place_name || "Unknown")} → ${escapeHtml(trip.to_place_name || "Unknown")}</td>
+        <td>${escapeHtml(trip.route_label || `${trip.from_place_name || "Unknown"} → ${trip.to_place_name || "Unknown"}`)}</td>
         <td>${formatDuration(trip.duration_sec)}</td>
         <td>${formatDistance(trip.distance_m)}</td>
         <td>${formatSpeed(trip.avg_speed_mps)}</td>
@@ -906,8 +906,7 @@ async function renderTravel() {
       <tr>
         <td>${formatTime(t.started_at)}</td>
         <td>${formatTime(t.ended_at)}</td>
-        <td>${escapeHtml(t.from_place_name || "Unknown")}</td>
-        <td>${escapeHtml(t.to_place_name || "Unknown")}</td>
+        <td>${escapeHtml(t.route_label || `${t.from_place_name || "Unknown"} → ${t.to_place_name || "Unknown"}`)}</td>
         <td>${formatDuration(t.duration_sec)}</td>
         <td>${formatDistance(t.distance_m)}</td>
         <td>${formatSpeed(t.avg_speed_mps)}</td>
@@ -921,7 +920,7 @@ async function renderTravel() {
       <div class="timeline-item travel">
         <div class="timeline-time">${formatTimeShort(t.started_at)}</div>
         <div>
-          <div class="timeline-title">${escapeHtml(t.from_place_name || "Unknown")} → ${escapeHtml(t.to_place_name || "Unknown")}</div>
+          <div class="timeline-title">${escapeHtml(t.route_label || `${t.from_place_name || "Unknown"} → ${t.to_place_name || "Unknown"}`)}</div>
           <div class="timeline-meta">${formatDuration(t.duration_sec)} · ${formatDistance(t.distance_m)} · ${formatSpeed(t.avg_speed_mps)}</div>
         </div>
         <div class="timeline-time">${formatTimeShort(t.ended_at)}</div>
@@ -939,7 +938,7 @@ async function renderTravel() {
     <div class="travel-cards timeline">${cards}</div>
     <div class="table-wrap travel-table">
       <table>
-        <thead><tr><th>Started</th><th>End</th><th>From</th><th>To</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
+        <thead><tr><th>Started</th><th>End</th><th>Route</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>

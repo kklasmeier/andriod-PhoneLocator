@@ -11,3 +11,5 @@ PLACE_MERGE_RADIUS_M = float(os.environ.get("PHONE_LOCATOR_PLACE_MERGE_RADIUS_M"
 MIN_VISIT_PRESENTATION_SEC = int(os.environ.get("PHONE_LOCATOR_MIN_VISIT_SEC", "300"))
 MIN_TRAVEL_PRESENTATION_SEC = int(os.environ.get("PHONE_LOCATOR_MIN_TRAVEL_SEC", "180"))
 MIN_TRAVEL_PRESENTATION_M = float(os.environ.get("PHONE_LOCATOR_MIN_TRAVEL_M", "200"))
+# Travel between visits at the same named place below this distance is parking/GPS drift.
+SAME_PLACE_LOCAL_MAX_M = float(os.environ.get("PHONE_LOCATOR_SAME_PLACE_LOCAL_M", "800"))
