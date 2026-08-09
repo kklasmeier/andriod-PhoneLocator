@@ -113,6 +113,21 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 CREATE INDEX IF NOT EXISTS idx_daily_stats_device_day
     ON daily_stats(device_id, day);
 
+CREATE TABLE IF NOT EXISTS heatmap_bins (
+    device_id TEXT NOT NULL,
+    grid_lat INTEGER NOT NULL,
+    grid_lon INTEGER NOT NULL,
+    center_lat REAL NOT NULL,
+    center_lon REAL NOT NULL,
+    point_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    PRIMARY KEY (device_id, grid_lat, grid_lon)
+);
+
+CREATE INDEX IF NOT EXISTS idx_heatmap_bins_device
+    ON heatmap_bins(device_id);
+
 CREATE TABLE IF NOT EXISTS device_settings (
     device_id TEXT PRIMARY KEY,
     auto_rename_places INTEGER NOT NULL DEFAULT 1,
@@ -187,6 +202,7 @@ def _migrate_analytics_meta(conn: sqlite3.Connection) -> None:
         "lifetime_stats_json": "TEXT",
         "lifetime_stats_point_at": "TEXT",
         "daily_stats_point_at": "TEXT",
+        "heatmap_bins_point_at": "TEXT",
     }
     for name, ddl in additions.items():
         if name not in columns:
@@ -701,6 +717,7 @@ def replace_analytics(
         if last_point_recorded_at is not None:
             _write_lifetime_stats(conn, device_id, last_point_recorded_at)
             _rebuild_daily_stats(conn, device_id, last_point_recorded_at)
+            _rebuild_heatmap_bins(conn, device_id, last_point_recorded_at)
         conn.commit()
 
 
@@ -1124,8 +1141,134 @@ def rebuild_lifetime_stats(device_id: str) -> dict[str, Any]:
             )
         stats = _write_lifetime_stats(conn, device_id, last_point)
         _rebuild_daily_stats(conn, device_id, last_point)
+        _rebuild_heatmap_bins(conn, device_id, last_point)
         conn.commit()
     return stats
+
+
+def _rebuild_heatmap_bins(
+    conn: sqlite3.Connection,
+    device_id: str,
+    last_point_recorded_at: str,
+) -> None:
+    from app.analytics.heatmap_bins import compute_heatmap_bins
+
+    points = conn.execute(
+        """
+        SELECT latitude, longitude, recorded_at
+        FROM location_points
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchall()
+
+    rows = compute_heatmap_bins([dict(row) for row in points])
+
+    conn.execute("DELETE FROM heatmap_bins WHERE device_id = ?", (device_id,))
+    for row in rows:
+        conn.execute(
+            """
+            INSERT INTO heatmap_bins (
+                device_id, grid_lat, grid_lon, center_lat, center_lon,
+                point_count, first_seen_at, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                device_id,
+                row["grid_lat"],
+                row["grid_lon"],
+                row["center_lat"],
+                row["center_lon"],
+                row["point_count"],
+                row["first_seen_at"],
+                row["last_seen_at"],
+            ),
+        )
+
+    conn.execute(
+        """
+        UPDATE analytics_meta
+        SET heatmap_bins_point_at = ?
+        WHERE device_id = ?
+        """,
+        (last_point_recorded_at, device_id),
+    )
+
+
+def rebuild_heatmap_bins(device_id: str) -> None:
+    last_point = get_latest_point_recorded_at(device_id)
+    if last_point is None:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM heatmap_bins WHERE device_id = ?", (device_id,))
+            conn.commit()
+        return
+
+    with get_connection() as conn:
+        meta = conn.execute(
+            "SELECT device_id FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        if meta is None:
+            conn.execute(
+                """
+                INSERT INTO analytics_meta (device_id, last_computed_at, last_point_recorded_at)
+                VALUES (?, ?, ?)
+                """,
+                (device_id, utc_now_iso(), last_point),
+            )
+        _rebuild_heatmap_bins(conn, device_id, last_point)
+        conn.commit()
+
+
+def get_heatmap_bins_point_at(device_id: str) -> str | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT heatmap_bins_point_at FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    return row["heatmap_bins_point_at"] if row else None
+
+
+def get_heatmap_bins(
+    device_id: str,
+    *,
+    min_count: int = 1,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                grid_lat, grid_lon, center_lat, center_lon,
+                point_count, first_seen_at, last_seen_at
+            FROM heatmap_bins
+            WHERE device_id = ? AND point_count >= ?
+            ORDER BY point_count DESC
+            LIMIT ?
+            """,
+            (device_id, min_count, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_heatmap_summary(device_id: str) -> dict[str, int]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS bin_count,
+                COALESCE(SUM(point_count), 0) AS total_points,
+                COALESCE(MAX(point_count), 0) AS max_count
+            FROM heatmap_bins
+            WHERE device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+    return {
+        "bin_count": int(row["bin_count"]),
+        "total_points": int(row["total_points"]),
+        "max_count": int(row["max_count"]),
+    }
 
 
 def _rebuild_daily_stats(

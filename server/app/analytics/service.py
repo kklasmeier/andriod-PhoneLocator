@@ -93,6 +93,35 @@ def ensure_daily_stats(device_id: str) -> None:
         database.rebuild_daily_stats(device_id)
 
 
+def ensure_heatmap_bins(device_id: str) -> None:
+    ensure_computed(device_id)
+    latest = database.get_latest_point_recorded_at(device_id)
+    if latest is None:
+        return
+    cached_at = database.get_heatmap_bins_point_at(device_id)
+    if cached_at != latest:
+        database.rebuild_heatmap_bins(device_id)
+
+
+def build_heatmap(
+    device_id: str,
+    *,
+    min_count: int = 1,
+    limit: int = 5000,
+) -> dict:
+    ensure_heatmap_bins(device_id)
+    bins = database.get_heatmap_bins(device_id, min_count=min_count, limit=limit)
+    summary = database.get_heatmap_summary(device_id)
+    return {
+        "device_id": device_id,
+        "bin_count": summary["bin_count"],
+        "total_points": summary["total_points"],
+        "max_count": summary["max_count"],
+        "cell_size_m": 50,
+        "bins": bins,
+    }
+
+
 def build_trends(
     device_id: str,
     *,

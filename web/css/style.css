@@ -715,6 +715,23 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   align-items: center;
 }
 
+.map-layer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  user-select: none;
+}
+
+.map-layer-toggle input {
+  accent-color: var(--accent);
+}
+
+.map-layer-status {
+  font-size: 0.8rem;
+}
+
 button.ring-phone {
   background: rgba(239, 68, 68, 0.18);
   border-color: #ef4444;
@@ -936,6 +953,33 @@ button.ring-phone {
 .chart-host {
   width: 100%;
   overflow-x: auto;
+  position: relative;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  min-width: 7rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(15, 20, 25, 0.95);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.chart-tooltip.hidden {
+  display: none;
+}
+
+.chart-tooltip div:first-child {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
 }
 
 .chart-svg {

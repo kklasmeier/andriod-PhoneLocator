@@ -1,6 +1,6 @@
 import { renderBarChart, renderStackedBarChart, formatTrendDistance } from "./charts.js";
 import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
-import { destroyMap, fitTrail, initMap, refreshMapSize, renderPlace, renderTrail, waitForLayout } from "./map.js";
+import { destroyMap, fitTrail, heatmapSupported, initMap, refreshMapSize, renderHeatmap, renderPlace, renderTrail, setHeatmapVisible, waitForLayout } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import { APP_VERSION } from "./version.js";
 import {
@@ -548,6 +548,11 @@ async function renderMapPage() {
     <div class="map-panel tall">
       <div class="map-controls">
         <button type="button" class="secondary" id="fit-trail-btn">Fit trail</button>
+        <label class="map-layer-toggle">
+          <input type="checkbox" id="heatmap-toggle" ${heatmapSupported() ? "" : "disabled"} />
+          Lifetime heatmap
+        </label>
+        <span id="heatmap-status" class="map-layer-status muted-hint"></span>
       </div>
       <div id="full-map" class="map-container"></div>
     </div>
@@ -571,6 +576,52 @@ async function renderMapPage() {
   initMap("full-map", { tall: true });
   document.getElementById("fit-trail-btn")?.addEventListener("click", fitTrail);
   renderTrail(history.points || [], dash.latest);
+
+  const heatmapToggle = document.getElementById("heatmap-toggle");
+  const heatmapStatus = document.getElementById("heatmap-status");
+  let heatmapLoaded = false;
+
+  if (!heatmapSupported()) {
+    if (heatmapStatus) heatmapStatus.textContent = "Heatmap plugin unavailable";
+  }
+
+  async function ensureHeatmapLoaded() {
+    if (heatmapLoaded) return true;
+    if (heatmapStatus) heatmapStatus.textContent = "Loading heatmap…";
+    try {
+      const data = await apiGet("/api/v1/location/heatmap", deviceParams());
+      renderHeatmap(data.bins || []);
+      heatmapLoaded = true;
+      if (heatmapStatus) {
+        heatmapStatus.textContent = data.bin_count
+          ? `${data.bin_count.toLocaleString()} cells · ${data.total_points.toLocaleString()} points`
+          : "No lifetime data yet";
+      }
+      return (data.bins || []).length > 0;
+    } catch (err) {
+      if (heatmapStatus) heatmapStatus.textContent = "Could not load heatmap";
+      throw err;
+    }
+  }
+
+  heatmapToggle?.addEventListener("change", async () => {
+    const wantVisible = heatmapToggle.checked;
+    try {
+      if (wantVisible) {
+        const hasBins = await ensureHeatmapLoaded();
+        if (!hasBins) {
+          heatmapToggle.checked = false;
+          if (heatmapStatus) heatmapStatus.textContent = "No lifetime data yet";
+          return;
+        }
+        setHeatmapVisible(true);
+      } else {
+        setHeatmapVisible(false);
+      }
+    } catch {
+      heatmapToggle.checked = false;
+    }
+  });
 }
 
 let _openMapAccordion = null;

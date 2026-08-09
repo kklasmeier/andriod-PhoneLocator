@@ -3,11 +3,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query
 
 from app import database
+from app.analytics import service as analytics_service
 from app.auth import verify_api_token
 from app.models import (
     BatchUploadRequest,
     BatchUploadResponse,
     DeviceCommandSummary,
+    HeatmapBinOut,
+    HeatmapResponse,
     HistoryResponse,
     LatestLocationResponse,
 )
@@ -71,4 +74,26 @@ def location_history(
         total_count=total_count,
         sampled=sampled,
         points=points,
+    )
+
+
+@router.get("/heatmap", response_model=HeatmapResponse)
+def location_heatmap(
+    device_id: Annotated[str, Query(min_length=1, max_length=128)],
+    _: Annotated[None, Depends(verify_api_token)],
+    min_count: Annotated[int, Query(ge=1, le=100)] = 1,
+    limit: Annotated[int, Query(ge=1, le=5000)] = 5000,
+) -> HeatmapResponse:
+    data = analytics_service.build_heatmap(
+        device_id,
+        min_count=min_count,
+        limit=limit,
+    )
+    return HeatmapResponse(
+        device_id=data["device_id"],
+        bin_count=data["bin_count"],
+        total_points=data["total_points"],
+        max_count=data["max_count"],
+        cell_size_m=data["cell_size_m"],
+        bins=[HeatmapBinOut(**row) for row in data["bins"]],
     )

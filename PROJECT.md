@@ -1285,6 +1285,7 @@ Aggregates must recover automatically — no manual “rebuild stats” step req
 | New location upload | `ensure_computed()` → full analytics recompute if stale → **refresh lifetime cache** |
 | `GET /api/v1/stats/lifetime` or `/stats/reports` | `ensure_lifetime_stats()` — if cache missing or `lifetime_stats_point_at ≠ latest point`, rebuild from derived tables |
 | `GET /api/v1/stats/trends` | `ensure_daily_stats()` — if `daily_stats_point_at ≠ latest point`, rebuild `daily_stats` from visits/travels/points |
+| `GET /api/v1/location/heatmap` | `ensure_heatmap_bins()` — if `heatmap_bins_point_at ≠ latest point`, rebuild `heatmap_bins` from location points |
 | Server restart | Same as above on first read; no background daemon required |
 | DB migration / new column | `init_db()` migrations add columns; first read rebuilds cache |
 
@@ -1303,11 +1304,12 @@ Aggregates must recover automatically — no manual “rebuild stats” step req
 
 Home may link “View reports →” but does **not** show lifetime stats.
 
-#### Geographic heatmap (separate from lifetime numbers)
+#### Geographic heatmap (Map page layer)
 
-- **Map page** layer toggle — not the Reports hub
-- Server **grid bins** (~50 m cells) refreshed on recompute; browser loads ~500–2k cells, not 175k points
-- Planned after Reports v1
+- **Map page** layer toggle — lifetime density, separate from Reports numbers
+- Server **grid bins** (~50 m cells) in `heatmap_bins`, refreshed on analytics recompute
+- Browser loads up to 5k cells via `GET /api/v1/location/heatmap`, not raw GPS points
+- **Shipped v1.9.20 (R4)**
 
 #### Build order (reports track)
 
@@ -1317,7 +1319,7 @@ Home may link “View reports →” but does **not** show lifetime stats.
 | R2 | `/reports` hub UI (lifetime summary) | **v1.9.12** |
 | R3 | Travel sections on Reports (frequent routes only) | **v1.9.15** |
 | R3b | Reports lifetime-only — drop period tab & trip list | **v1.9.17** |
-| R4 | Map heatmap layer + grid bin table | Planned |
+| R4 | Map heatmap layer + grid bin table | **v1.9.20** |
 | R5 | `daily_stats` + `/stats/trends` + Reports trend charts | **v1.9.18** |
 | R6 | `/reports/travel` charts + temporal heatmap | Planned |
 
@@ -1415,7 +1417,7 @@ Extends [§8](#8-api-design):
 | `GET` | `/api/v1/stats/summary?period=&granularity=` | Reports, mini charts |
 | `GET` | `/api/v1/stats/travel?period=&granularity=` | Travel reports |
 | `GET` | `/api/v1/stats/trends?from=&to=&granularity=` | Long-term trends |
-| `GET` | `/api/v1/location/trail?from=&to=` | Map polyline (simplified points) |
+| `GET` | `/api/v1/location/heatmap` | Map lifetime heatmap layer |
 | `GET` | `/api/v1/health/gaps?from=&to=` | Health page, status banner |
 | `GET` | `/api/v1/health/upload-stats?from=&to=` | Health page |
 

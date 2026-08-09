@@ -128,6 +128,25 @@ class HistoryResponse(BaseModel):
     points: list[LocationPointOut]
 
 
+class HeatmapBinOut(BaseModel):
+    grid_lat: int
+    grid_lon: int
+    center_lat: float
+    center_lon: float
+    point_count: int
+    first_seen_at: str
+    last_seen_at: str
+
+
+class HeatmapResponse(BaseModel):
+    device_id: str
+    bin_count: int
+    total_points: int
+    max_count: int
+    cell_size_m: int = 50
+    bins: list[HeatmapBinOut]
+
+
 class PlaceOut(BaseModel):
     id: int
     device_id: str

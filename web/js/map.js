@@ -1,7 +1,7 @@
 let _map = null;
 let _mapGeneration = 0;
 let _resizeTimers = [];
-let _layers = { trail: null, markers: null, accuracy: null };
+let _layers = { trail: null, markers: null, accuracy: null, heatmap: null };
 
 function waitForLayout() {
   return new Promise((resolve) => {
@@ -38,7 +38,7 @@ export function destroyMap() {
   if (_map) {
     _map.remove();
     _map = null;
-    _layers = { trail: null, markers: null, accuracy: null };
+    _layers = { trail: null, markers: null, accuracy: null, heatmap: null };
   }
 }
 
@@ -201,4 +201,63 @@ export function fitTrail() {
   if (!_map || !_layers.trail.getLayers().length) return;
   const group = L.featureGroup(_layers.trail.getLayers());
   _map.fitBounds(group.getBounds().pad(0.12));
+}
+
+function bringTrailLayersToFront() {
+  if (!_map) return;
+  _layers.trail?.bringToFront();
+  _layers.markers?.bringToFront();
+  _layers.accuracy?.bringToFront();
+}
+
+export function clearHeatmap() {
+  if (_layers.heatmap && _map) {
+    _map.removeLayer(_layers.heatmap);
+  }
+  _layers.heatmap = null;
+}
+
+export function renderHeatmap(bins) {
+  if (!_map) return;
+  clearHeatmap();
+  if (!bins?.length || typeof L.heatLayer !== "function") return;
+
+  const max = Math.max(...bins.map((bin) => bin.point_count), 1);
+  const points = bins.map((bin) => [
+    bin.center_lat,
+    bin.center_lon,
+    bin.point_count / max,
+  ]);
+
+  _layers.heatmap = L.heatLayer(points, {
+    radius: 24,
+    blur: 20,
+    maxZoom: 17,
+    minOpacity: 0.3,
+    gradient: {
+      0.15: "#312e81",
+      0.35: "#3b82f6",
+      0.55: "#8b5cf6",
+      0.75: "#f59e0b",
+      1.0: "#ef4444",
+    },
+  });
+  _layers.heatmap.addTo(_map);
+  bringTrailLayersToFront();
+}
+
+export function setHeatmapVisible(visible) {
+  if (!_map || !_layers.heatmap) return;
+  if (visible) {
+    if (!_map.hasLayer(_layers.heatmap)) {
+      _layers.heatmap.addTo(_map);
+    }
+    bringTrailLayersToFront();
+  } else {
+    _map.removeLayer(_layers.heatmap);
+  }
+}
+
+export function heatmapSupported() {
+  return typeof L !== "undefined" && typeof L.heatLayer === "function";
 }

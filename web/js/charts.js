@@ -18,6 +18,45 @@ function formatMiles(meters) {
   return `${Math.round(meters)} m`;
 }
 
+function escapeTooltipText(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function bindChartTooltip(container, svg, buckets, buildLines) {
+  const tooltip = document.createElement("div");
+  tooltip.className = "chart-tooltip hidden";
+  tooltip.setAttribute("role", "tooltip");
+  container.appendChild(tooltip);
+
+  const hide = () => tooltip.classList.add("hidden");
+
+  const show = (event, index) => {
+    const bucket = buckets[index];
+    if (!bucket) return;
+    const lines = buildLines(bucket);
+    tooltip.innerHTML = lines.map((line) => `<div>${escapeTooltipText(line)}</div>`).join("");
+    tooltip.classList.remove("hidden");
+
+    const hostRect = container.getBoundingClientRect();
+    const x = event.clientX - hostRect.left;
+    const y = event.clientY - hostRect.top;
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+  };
+
+  svg.querySelectorAll("[data-bucket-index]").forEach((hitArea) => {
+    hitArea.addEventListener("mouseenter", (event) => show(event, Number(hitArea.dataset.bucketIndex)));
+    hitArea.addEventListener("mousemove", (event) => show(event, Number(hitArea.dataset.bucketIndex)));
+    hitArea.addEventListener("mouseleave", hide);
+  });
+
+  svg.addEventListener("mouseleave", hide);
+}
+
 export function renderStackedBarChart(container, { buckets, series, emptyLabel = "No data" }) {
   if (!container) return;
   if (!buckets?.length) {
@@ -48,14 +87,15 @@ export function renderStackedBarChart(container, { buckets, series, emptyLabel =
           if (value <= 0) return "";
           const segH = (value / maxTotal) * innerH;
           yCursor -= segH;
-          return `<rect x="${x}" y="${yCursor}" width="${barWidth}" height="${segH}" fill="${item.color}" rx="2"><title>${item.label}: ${formatHours(value)}</title></rect>`;
+          return `<rect x="${x}" y="${yCursor}" width="${barWidth}" height="${segH}" fill="${item.color}" rx="2" pointer-events="none"></rect>`;
         })
         .join("");
+      const hitArea = `<rect class="chart-bar-hit" data-bucket-index="${index}" x="${x}" y="${margin.top}" width="${barWidth}" height="${innerH}" fill="transparent"></rect>`;
       const label =
         buckets.length <= 14 || index % Math.ceil(buckets.length / 12) === 0
-          ? `<text x="${x + barWidth / 2}" y="${height - 8}" text-anchor="middle" class="chart-axis-label">${bucket.label}</text>`
+          ? `<text x="${x + barWidth / 2}" y="${height - 8}" text-anchor="middle" class="chart-axis-label" pointer-events="none">${bucket.label}</text>`
           : "";
-      return `${segments}${label}`;
+      return `${segments}${hitArea}${label}`;
     })
     .join("");
 
@@ -85,6 +125,15 @@ export function renderStackedBarChart(container, { buckets, series, emptyLabel =
       ${yTicks}
       ${bars}
     </svg>`;
+
+  const svg = container.querySelector(".chart-svg");
+  bindChartTooltip(container, svg, buckets, (bucket) => {
+    const lines = [bucket.label];
+    for (const item of series) {
+      lines.push(`${item.label}: ${formatHours(bucket[item.key] || 0)}`);
+    }
+    return lines;
+  });
 }
 
 export function renderBarChart(container, { buckets, valueKey, formatValue, color, emptyLabel = "No data", label = "Value" }) {
