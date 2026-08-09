@@ -50,6 +50,7 @@ class RingForegroundService : Service() {
                 val durationSec = intent.getIntExtra(EXTRA_DURATION_SEC, DEFAULT_DURATION_SEC)
                 activeCommandId = commandId
                 finishing.set(false)
+                RingSessionState.setRinging(true)
                 promoteForeground()
                 sessionJob?.cancel()
                 sessionJob = scope.launch { runRingSession(commandId, durationSec) }
@@ -65,6 +66,7 @@ class RingForegroundService : Service() {
         sessionJob?.cancel()
         scope.cancel()
         ringHelper.stop()
+        RingSessionState.setRinging(false)
         super.onDestroy()
     }
 
@@ -97,10 +99,12 @@ class RingForegroundService : Service() {
             api.startRingCommand(auth, deviceId, commandId)
         } catch (exc: Exception) {
             log("error", "Ring start failed — ${exc.message ?: "unknown error"}")
+            RingSessionState.setRinging(false)
             stopSelf()
             return
         }
 
+        promoteForeground()
         ringHelper.start(safeDurationSec * 1000L)
         log("info", "Ringing for up to ${safeDurationSec}s")
 
@@ -130,6 +134,7 @@ class RingForegroundService : Service() {
     ) {
         if (!finishing.compareAndSet(false, true)) return
         ringHelper.stop()
+        RingSessionState.setRinging(false)
 
         val settings = settingsRepository.snapshot()
         val resolvedApi = api ?: ApiClientFactory().create(settings.apiBaseUrl)
@@ -212,6 +217,17 @@ class RingForegroundService : Service() {
                 action = ACTION_START
                 putExtra(EXTRA_COMMAND_ID, commandId)
                 putExtra(EXTRA_DURATION_SEC, durationSec)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stopRinging(context: Context) {
+            val intent = Intent(context, RingForegroundService::class.java).apply {
+                action = ACTION_STOP
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

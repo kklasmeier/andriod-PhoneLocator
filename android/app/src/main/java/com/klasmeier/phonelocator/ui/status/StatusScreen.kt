@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -56,12 +59,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.klasmeier.phonelocator.R
 import com.klasmeier.phonelocator.data.DEFAULT_API_URL
 import com.klasmeier.phonelocator.data.ServiceStateRepository
 import com.klasmeier.phonelocator.data.SettingsRepository
 import com.klasmeier.phonelocator.data.db.AppDatabase
 import com.klasmeier.phonelocator.data.db.LatestReadingEntity
 import com.klasmeier.phonelocator.monitor.TrackingController
+import com.klasmeier.phonelocator.notification.RingForegroundService
+import com.klasmeier.phonelocator.notification.RingSessionState
 import com.klasmeier.phonelocator.ops.ProblemBanner
 import com.klasmeier.phonelocator.ops.TrackingHealth
 import com.klasmeier.phonelocator.ops.TrackingStatus
@@ -257,6 +263,7 @@ fun StatusScreen(
     viewModel: StatusViewModel = viewModel(factory = StatusViewModel.Factory(LocalContext.current)),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val isRinging by RingSessionState.isRinging.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -286,6 +293,12 @@ fun StatusScreen(
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
+        }
+
+        if (isRinging) {
+            RingingStopCard(
+                onStop = { RingForegroundService.stopRinging(context) },
+            )
         }
 
         StatusHeroCard(
@@ -347,6 +360,44 @@ fun StatusScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun RingingStopCard(onStop: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.ring_in_app_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = stringResource(R.string.ring_in_app_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Button(
+                onClick = onStop,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) {
+                Text(
+                    text = stringResource(R.string.ring_in_app_stop),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 

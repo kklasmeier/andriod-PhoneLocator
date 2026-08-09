@@ -16,5 +16,8 @@
     <string name="ring_notification_channel_description">Shown while the phone is ringing from the locator website</string>
     <string name="ring_notification_title">Phone Locator</string>
     <string name="ring_notification_text">Ringing — tap Stop to silence</string>
-    <string name="ring_notification_stop">Stop</string>
+    <string name="ring_notification_stop">Stop ringing</string>
+    <string name="ring_in_app_title">Phone is ringing</string>
+    <string name="ring_in_app_subtitle">Tap below to silence the alarm</string>
+    <string name="ring_in_app_stop">Stop ringing</string>
 </resources>
