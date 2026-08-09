@@ -1,15 +1,17 @@
 package com.klasmeier.phonelocator.monitor
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.klasmeier.phonelocator.BuildConfig
 import com.klasmeier.phonelocator.data.ServiceStateRepository
 import com.klasmeier.phonelocator.data.SettingsRepository
 import com.klasmeier.phonelocator.location.LocationCollector
+import com.klasmeier.phonelocator.notification.RingForegroundService
 import com.klasmeier.phonelocator.notification.TrackingNotificationHelper
 import com.klasmeier.phonelocator.sync.UploadRepository
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +46,17 @@ class LocationTrackingService : Service() {
                 startLoopIfNeeded()
                 scope.launch {
                     uploadRepository.manualSync()
+                    applyNotificationPolicy()
+                }
+                return START_STICKY
+            }
+            ACTION_RING -> {
+                val commandId = intent.getStringExtra(EXTRA_COMMAND_ID) ?: return START_STICKY
+                val durationSec = intent.getIntExtra(EXTRA_DURATION_SEC, DEFAULT_RING_DURATION_SEC)
+                promoteForegroundMinimal()
+                startLoopIfNeeded()
+                scope.launch {
+                    RingForegroundService.start(this@LocationTrackingService, commandId, durationSec)
                     applyNotificationPolicy()
                 }
                 return START_STICKY
@@ -89,8 +102,7 @@ class LocationTrackingService : Service() {
                 }
             },
             onHide = {
-                notificationHelper.cancelNotification()
-                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                promoteForegroundMinimal()
             },
         )
     }
@@ -140,5 +152,18 @@ class LocationTrackingService : Service() {
 
     companion object {
         const val ACTION_SYNC_NOW = "com.klasmeier.phonelocator.SYNC_NOW"
+        const val ACTION_RING = "com.klasmeier.phonelocator.RING"
+        const val EXTRA_COMMAND_ID = "command_id"
+        const val EXTRA_DURATION_SEC = "duration_sec"
+        private const val DEFAULT_RING_DURATION_SEC = 30
+
+        fun requestRing(context: Context, commandId: String, durationSec: Int) {
+            val intent = Intent(context, LocationTrackingService::class.java).apply {
+                action = ACTION_RING
+                putExtra(EXTRA_COMMAND_ID, commandId)
+                putExtra(EXTRA_DURATION_SEC, durationSec)
+            }
+            ContextCompat.startForegroundService(context.applicationContext, intent)
+        }
     }
 }

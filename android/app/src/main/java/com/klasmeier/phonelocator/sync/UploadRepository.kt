@@ -9,7 +9,7 @@ import com.klasmeier.phonelocator.data.api.DeviceCommandSummary
 import com.klasmeier.phonelocator.data.api.LocationPointPayload
 import com.klasmeier.phonelocator.location.CollectedLocation
 import com.klasmeier.phonelocator.location.LocationCollector
-import com.klasmeier.phonelocator.notification.RingForegroundService
+import com.klasmeier.phonelocator.monitor.LocationTrackingService
 import com.klasmeier.phonelocator.data.db.ActivityLogEntity
 import com.klasmeier.phonelocator.data.db.AppDatabase
 import com.klasmeier.phonelocator.data.db.LatestReadingEntity
@@ -134,7 +134,7 @@ class UploadRepository(
                 log("error", response.errors.first())
             }
             if (checkPendingCommands && response.commands.isNotEmpty()) {
-                processCommands(api, auth, deviceId, response.commands)
+                processCommands(response.commands)
             } else if (checkPendingCommands && database.uploadQueueDao().count() == 0) {
                 pollAndProcessCommands(api, auth, deviceId)
             }
@@ -158,17 +158,14 @@ class UploadRepository(
         try {
             val pending = api.pendingCommands(auth, deviceId).commands
             if (pending.isNotEmpty()) {
-                processCommands(api, auth, deviceId, pending)
+                processCommands(pending)
             }
         } catch (exc: Exception) {
             log("error", "Command poll failed — ${exc.message ?: "unknown error"}")
         }
     }
 
-    private suspend fun processCommands(
-        api: com.klasmeier.phonelocator.data.api.LocationApi,
-        auth: String,
-        deviceId: String,
+        private suspend fun processCommands(
         commands: List<DeviceCommandSummary>,
     ) {
         for (command in commands) {
@@ -186,7 +183,7 @@ class UploadRepository(
             flushQueue(logOnSuccess = false, checkPendingCommands = false)
         }
         val durationSec = command.durationSec ?: 30
-        RingForegroundService.start(appContext, command.id, durationSec)
+        LocationTrackingService.requestRing(appContext, command.id, durationSec)
         log("info", "Ring command started (${durationSec}s max)")
     }
 
