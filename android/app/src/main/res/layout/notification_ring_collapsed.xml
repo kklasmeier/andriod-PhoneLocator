@@ -1,29 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="4dp">
-
-    <TextView
-        android:id="@+id/ring_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textAppearance="@style/TextAppearance.Compat.Notification.Title"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/ring_text"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textAppearance="@style/TextAppearance.Compat.Notification.Info" />
+    android:padding="2dp">
 
     <TextView
         android:id="@+id/stop_button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
         android:minHeight="48dp"
         android:background="@drawable/notification_stop_button_bg"
         android:gravity="center"
@@ -35,4 +19,4 @@
         android:textColor="@android:color/white"
         android:textSize="15sp"
         android:textStyle="bold" />
-</LinearLayout>
+</FrameLayout>

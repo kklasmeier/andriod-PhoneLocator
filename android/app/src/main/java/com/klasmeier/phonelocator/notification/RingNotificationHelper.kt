@@ -19,7 +19,8 @@ class RingNotificationHelper(private val context: Context) {
         ensureChannel()
         val stopPending = stopPendingIntent()
         val openAppPending = openAppPendingIntent()
-        val customView = buildCustomView(stopPending)
+        val collapsedView = buildCollapsedView(stopPending)
+        val expandedView = buildExpandedView(stopPending)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_RING)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -31,8 +32,8 @@ class RingNotificationHelper(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(false)
-            .setCustomContentView(customView)
-            .setCustomBigContentView(customView)
+            .setCustomContentView(collapsedView)
+            .setCustomBigContentView(expandedView)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
@@ -47,7 +48,14 @@ class RingNotificationHelper(private val context: Context) {
         return builder.build()
     }
 
-    private fun buildCustomView(stopPending: PendingIntent): RemoteViews {
+    private fun buildCollapsedView(stopPending: PendingIntent): RemoteViews {
+        val view = RemoteViews(context.packageName, R.layout.notification_ring_collapsed)
+        view.setTextViewText(R.id.stop_button, context.getString(R.string.ring_notification_stop))
+        view.setOnClickPendingIntent(R.id.stop_button, stopPending)
+        return view
+    }
+
+    private fun buildExpandedView(stopPending: PendingIntent): RemoteViews {
         val view = RemoteViews(context.packageName, R.layout.notification_ring)
         view.setTextViewText(R.id.ring_title, context.getString(R.string.ring_notification_title))
         view.setTextViewText(R.id.ring_text, context.getString(R.string.ring_notification_text))
