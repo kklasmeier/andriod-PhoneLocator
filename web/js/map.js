@@ -54,8 +54,9 @@ export function initMap(container, { tall = false } = {}) {
   if (panel && tall) panel.classList.add("tall");
 
   _map = L.map(el, { zoomControl: true });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap",
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+    attribution:
+      "Tiles &copy; Esri &mdash; Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap",
     maxZoom: 19,
   }).addTo(_map);
 
