@@ -209,6 +209,36 @@ class WeekTeaser(BaseModel):
     travel_duration_sec: int
 
 
+class LifetimePlaceSummary(BaseModel):
+    place_id: int
+    name: str
+    duration_sec: int
+
+
+class LifetimeTopPlace(BaseModel):
+    place_id: int
+    name: str
+    duration_sec: int
+    share_pct: int
+
+
+class LifetimeStatsResponse(BaseModel):
+    device_id: str
+    first_point_at: str | None = None
+    last_point_at: str | None = None
+    days_with_data: int = 0
+    point_count: int = 0
+    places_count: int = 0
+    places_visited_count: int = 0
+    visits_count: int = 0
+    travel_trips: int = 0
+    stationary_duration_sec: int = 0
+    travel_duration_sec: int = 0
+    travel_distance_m: float = 0.0
+    top_places: list[LifetimePlaceSummary] = Field(default_factory=list)
+    top_place: LifetimeTopPlace | None = None
+
+
 class StatsSummaryResponse(BaseModel):
     device_id: str
     period: str
@@ -219,6 +249,17 @@ class StatsSummaryResponse(BaseModel):
     stationary_duration_sec: int
     top_places: list[TopPlaceSummary]
     week_teaser: WeekTeaser | None = None
+
+    model_config = {"populate_by_name": True, "ser_json_by_alias": True}
+
+
+class ReportsResponse(BaseModel):
+    device_id: str
+    period: str
+    from_: str = Field(alias="from")
+    to: str
+    lifetime: LifetimeStatsResponse
+    summary: StatsSummaryResponse
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

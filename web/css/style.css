@@ -727,6 +727,53 @@ button.ring-phone {
 .ring-status.ok { color: #86efac; }
 .ring-status.error { color: #fca5a5; }
 
+.lifetime-band {
+  margin-bottom: 1rem;
+}
+
+.lifetime-band h2,
+.reports-period h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.lifetime-band h3,
+.reports-period h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.lifetime-since {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.lifetime-highlight {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.lifetime-cards {
+  margin-bottom: 0;
+}
+
+.bar-fill.lifetime {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+}
+
+.reports-period {
+  margin-bottom: 1rem;
+}
+
+.reports-coming-soon {
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .inline-rename {
   display: flex;
   gap: 0.35rem;

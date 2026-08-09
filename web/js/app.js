@@ -5,6 +5,7 @@ import { APP_VERSION } from "./version.js";
 import {
   escapeHtml,
   formatDaySeparator,
+  formatDateShort,
   formatDistance,
   formatDuration,
   formatSpeed,
@@ -306,7 +307,7 @@ async function renderHome() {
         ${summary.week_teaser ? `<p style="font-size:0.85rem;color:var(--muted);margin-top:1rem">This week: ${summary.week_teaser.places_count} places · ${formatDuration(summary.week_teaser.travel_duration_sec)} travel</p>` : ""}
       </div>
     </div>
-    <p style="margin-top:1rem"><a href="#/timeline">View full timeline →</a></p>
+    <p style="margin-top:1rem"><a href="#/timeline">View full timeline →</a> · <a href="#/reports">Reports →</a></p>
   `;
 
   initMap("home-map");
@@ -326,6 +327,100 @@ async function renderHome() {
     );
   }
   renderTrail(history.points || [], latest);
+}
+
+async function renderReports() {
+  setActiveNav("/reports");
+  setBanner(null);
+  appEl.innerHTML = `<div class="loading">Loading reports…</div>`;
+
+  const data = await apiGet("/api/v1/stats/reports", deviceParams(getDashboardParams()));
+  const { lifetime, summary } = data;
+
+  const sinceLine = lifetime.first_point_at
+    ? `Since ${formatDateShort(lifetime.first_point_at)} · ${lifetime.days_with_data.toLocaleString()} days tracked`
+    : "No tracking data yet";
+
+  const topPlaceLine = lifetime.top_place
+    ? `Mostly at <strong>${escapeHtml(lifetime.top_place.name)}</strong> (${lifetime.top_place.share_pct}% of stationary time)`
+    : "";
+
+  const lifetimeBars = (lifetime.top_places || [])
+    .map((p) => {
+      const max = maxDuration(lifetime.top_places);
+      return `
+      <div class="bar-row">
+        <span>${escapeHtml(p.name)}</span>
+        <div class="bar-track"><div class="bar-fill lifetime" style="width:${max ? Math.round((p.duration_sec / max) * 100) : 0}%"></div></div>
+        <span>${formatDuration(p.duration_sec)}</span>
+      </div>`;
+    })
+    .join("");
+
+  const periodBars = (summary.top_places || [])
+    .map((p) => {
+      const max = maxDuration(summary.top_places);
+      return `
+      <div class="bar-row">
+        <span>${escapeHtml(p.name)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${max ? Math.round((p.duration_sec / max) * 100) : 0}%"></div></div>
+        <span>${formatDuration(p.duration_sec)}</span>
+      </div>`;
+    })
+    .join("");
+
+  appEl.innerHTML = `
+    <h1 class="page-title">Reports</h1>
+    <section class="lifetime-band panel">
+      <h2>All time</h2>
+      <p class="lifetime-since">${sinceLine}</p>
+      <div class="cards lifetime-cards">
+        <div class="card">
+          <div class="card-label">Places</div>
+          <div class="card-value">${lifetime.places_count}</div>
+          <div class="card-sub">${lifetime.visits_count.toLocaleString()} visits</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Travel</div>
+          <div class="card-value">${formatDuration(lifetime.travel_duration_sec)}</div>
+          <div class="card-sub">${formatDistance(lifetime.travel_distance_m)} · ${lifetime.travel_trips} trips</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Stationary</div>
+          <div class="card-value">${formatDuration(lifetime.stationary_duration_sec)}</div>
+          <div class="card-sub">at named places</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Points</div>
+          <div class="card-value">${lifetime.point_count.toLocaleString()}</div>
+          <div class="card-sub">GPS readings</div>
+        </div>
+      </div>
+      ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
+      <h3>Top places (all time)</h3>
+      ${lifetimeBars || '<div class="empty">No place visits yet</div>'}
+    </section>
+    <section class="reports-period panel">
+      <h2>This period</h2>
+      <div class="cards">
+        <div class="card">
+          <div class="card-label">Places</div>
+          <div class="card-value">${summary.places_count}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Travel</div>
+          <div class="card-value">${formatDuration(summary.travel_duration_sec)}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Stationary</div>
+          <div class="card-value">${formatDuration(summary.stationary_duration_sec)}</div>
+        </div>
+      </div>
+      <h3>Top places (this period)</h3>
+      ${periodBars || '<div class="empty">No visits in this period</div>'}
+      <p class="reports-coming-soon">More charts (time breakdown, travel trends, heatmap) coming in future updates.</p>
+    </section>
+  `;
 }
 
 async function renderMapPage() {
@@ -1057,6 +1152,7 @@ const routes = {
   "/timeline": renderTimeline,
   "/places": renderPlaces,
   "/travel": renderTravel,
+  "/reports": renderReports,
   "/history": renderHistory,
   "/settings": renderSettings,
 };

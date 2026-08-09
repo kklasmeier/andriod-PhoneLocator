@@ -161,7 +161,19 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.executescript(SCHEMA_SQL)
         _migrate_device_settings(conn)
+        _migrate_analytics_meta(conn)
         conn.commit()
+
+
+def _migrate_analytics_meta(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(analytics_meta)")}
+    additions = {
+        "lifetime_stats_json": "TEXT",
+        "lifetime_stats_point_at": "TEXT",
+    }
+    for name, ddl in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE analytics_meta ADD COLUMN {name} {ddl}")
 
 
 def _migrate_device_settings(conn: sqlite3.Connection) -> None:
@@ -658,6 +670,8 @@ def replace_analytics(
             """,
             (device_id, received_at, last_point_recorded_at),
         )
+        if last_point_recorded_at is not None:
+            _write_lifetime_stats(conn, device_id, last_point_recorded_at)
         conn.commit()
 
 
@@ -910,3 +924,183 @@ def ack_device_command(
             (command_id,),
         ).fetchone()
     return dict(updated) if updated else None
+
+
+def _empty_lifetime_stats(device_id: str) -> dict[str, Any]:
+    return {
+        "device_id": device_id,
+        "first_point_at": None,
+        "last_point_at": None,
+        "days_with_data": 0,
+        "point_count": 0,
+        "places_count": 0,
+        "places_visited_count": 0,
+        "visits_count": 0,
+        "travel_trips": 0,
+        "stationary_duration_sec": 0,
+        "travel_duration_sec": 0,
+        "travel_distance_m": 0.0,
+        "top_places": [],
+        "top_place": None,
+    }
+
+
+def _compute_lifetime_stats(conn: sqlite3.Connection, device_id: str) -> dict[str, Any]:
+    point_row = conn.execute(
+        """
+        SELECT
+            MIN(recorded_at) AS first_point_at,
+            MAX(recorded_at) AS last_point_at,
+            COUNT(*) AS point_count,
+            COUNT(DISTINCT substr(recorded_at, 1, 10)) AS days_with_data
+        FROM location_points
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchone()
+    if point_row is None or point_row["point_count"] == 0:
+        return _empty_lifetime_stats(device_id)
+
+    visit_row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS visits_count,
+            COALESCE(SUM(duration_sec), 0) AS stationary_duration_sec,
+            COUNT(DISTINCT place_id) AS places_visited_count
+        FROM visits
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchone()
+    places_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM places WHERE device_id = ?",
+        (device_id,),
+    ).fetchone()["c"]
+    travel_row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS travel_trips,
+            COALESCE(SUM(duration_sec), 0) AS travel_duration_sec,
+            COALESCE(SUM(distance_m), 0) AS travel_distance_m
+        FROM travel_segments
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchone()
+
+    place_rows = conn.execute(
+        "SELECT id, name FROM places WHERE device_id = ?",
+        (device_id,),
+    ).fetchall()
+    places_by_id = {row["id"]: row for row in place_rows}
+
+    top_rows = conn.execute(
+        """
+        SELECT place_id, SUM(duration_sec) AS duration_sec
+        FROM visits
+        WHERE device_id = ? AND place_id IS NOT NULL
+        GROUP BY place_id
+        ORDER BY duration_sec DESC
+        LIMIT 10
+        """,
+        (device_id,),
+    ).fetchall()
+
+    stationary_sec = int(visit_row["stationary_duration_sec"])
+    top_places: list[dict[str, Any]] = []
+    for row in top_rows:
+        place_id = int(row["place_id"])
+        duration_sec = int(row["duration_sec"])
+        place = places_by_id.get(place_id)
+        name = place["name"] if place and place["name"] else f"Place {place_id}"
+        top_places.append(
+            {
+                "place_id": place_id,
+                "name": name,
+                "duration_sec": duration_sec,
+            }
+        )
+
+    top_place = None
+    if top_places and stationary_sec > 0:
+        leader = top_places[0]
+        top_place = {
+            "place_id": leader["place_id"],
+            "name": leader["name"],
+            "duration_sec": leader["duration_sec"],
+            "share_pct": round(leader["duration_sec"] / stationary_sec * 100),
+        }
+
+    return {
+        "device_id": device_id,
+        "first_point_at": point_row["first_point_at"],
+        "last_point_at": point_row["last_point_at"],
+        "days_with_data": int(point_row["days_with_data"]),
+        "point_count": int(point_row["point_count"]),
+        "places_count": int(places_count),
+        "places_visited_count": int(visit_row["places_visited_count"] or 0),
+        "visits_count": int(visit_row["visits_count"]),
+        "travel_trips": int(travel_row["travel_trips"]),
+        "stationary_duration_sec": stationary_sec,
+        "travel_duration_sec": int(travel_row["travel_duration_sec"]),
+        "travel_distance_m": float(travel_row["travel_distance_m"]),
+        "top_places": top_places,
+        "top_place": top_place,
+    }
+
+
+def _write_lifetime_stats(
+    conn: sqlite3.Connection,
+    device_id: str,
+    last_point_recorded_at: str,
+) -> dict[str, Any]:
+    stats = _compute_lifetime_stats(conn, device_id)
+    conn.execute(
+        """
+        UPDATE analytics_meta
+        SET lifetime_stats_json = ?, lifetime_stats_point_at = ?
+        WHERE device_id = ?
+        """,
+        (json.dumps(stats), last_point_recorded_at, device_id),
+    )
+    return stats
+
+
+def rebuild_lifetime_stats(device_id: str) -> dict[str, Any]:
+    last_point = get_latest_point_recorded_at(device_id)
+    if last_point is None:
+        return _empty_lifetime_stats(device_id)
+    with get_connection() as conn:
+        meta = conn.execute(
+            "SELECT device_id FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        if meta is None:
+            conn.execute(
+                """
+                INSERT INTO analytics_meta (device_id, last_computed_at, last_point_recorded_at)
+                VALUES (?, ?, ?)
+                """,
+                (device_id, utc_now_iso(), last_point),
+            )
+        stats = _write_lifetime_stats(conn, device_id, last_point)
+        conn.commit()
+    return stats
+
+
+def get_cached_lifetime_stats(device_id: str) -> tuple[dict[str, Any] | None, str | None]:
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT lifetime_stats_json, lifetime_stats_point_at
+            FROM analytics_meta
+            WHERE device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+    if row is None or not row["lifetime_stats_json"]:
+        return None, None
+    try:
+        return json.loads(row["lifetime_stats_json"]), row["lifetime_stats_point_at"]
+    except json.JSONDecodeError:
+        return None, None

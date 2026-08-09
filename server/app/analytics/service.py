@@ -70,6 +70,18 @@ def ensure_computed(device_id: str) -> None:
         recompute_device(device_id)
 
 
+def ensure_lifetime_stats(device_id: str) -> dict:
+    ensure_computed(device_id)
+    latest = database.get_latest_point_recorded_at(device_id)
+    if latest is None:
+        return database.rebuild_lifetime_stats(device_id)
+
+    cached, cached_at = database.get_cached_lifetime_stats(device_id)
+    if cached is not None and cached_at == latest:
+        return cached
+    return database.rebuild_lifetime_stats(device_id)
+
+
 def build_summary(
     device_id: str,
     period: str | None = None,

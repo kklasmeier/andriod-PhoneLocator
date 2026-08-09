@@ -5,16 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app import database
 from app.analytics import service as analytics_service
 from app.analytics.auto_naming import auto_rename_places
-from app.analytics.periods import resolve_range
+from app.analytics.periods import resolve_period, resolve_range
 from app.auth import verify_api_token
 from app.models import (
     AutoNamePlacesResponse,
     AutoRenameStatusResponse,
     DeviceSettingsResponse,
     DeviceSettingsUpdate,
+    LifetimeStatsResponse,
     PlaceOut,
     PlaceRenameRequest,
     PlacesResponse,
+    ReportsResponse,
     StatsSummaryResponse,
     TravelResponse,
     TravelSegmentOut,
@@ -144,3 +146,51 @@ def stats_summary(
 ) -> StatsSummaryResponse:
     data = analytics_service.build_summary(device_id=device_id, period=period)
     return StatsSummaryResponse(**data)
+
+
+@stats_router.get("/lifetime", response_model=LifetimeStatsResponse)
+def stats_lifetime(
+    device_id: Annotated[str, Query(min_length=1, max_length=128)],
+    _: Annotated[None, Depends(verify_api_token)],
+) -> LifetimeStatsResponse:
+    data = analytics_service.ensure_lifetime_stats(device_id)
+    return LifetimeStatsResponse(**data)
+
+
+@stats_router.get("/reports", response_model=ReportsResponse)
+def stats_reports(
+    device_id: Annotated[str, Query(min_length=1, max_length=128)],
+    _: Annotated[None, Depends(verify_api_token)],
+    from_value: Annotated[str | None, Query(alias="from")] = None,
+    to_value: Annotated[str | None, Query(alias="to")] = None,
+    period: Annotated[str | None, Query()] = None,
+) -> ReportsResponse:
+    lifetime = analytics_service.ensure_lifetime_stats(device_id)
+
+    if from_value and to_value:
+        from_iso, to_iso = from_value, to_value
+        period_label = period or "custom"
+        summary = analytics_service.build_summary(
+            device_id=device_id,
+            period=period_label,
+            from_iso=from_iso,
+            to_iso=to_iso,
+        )
+    else:
+        period_label = period or "today"
+        from_iso, to_iso = resolve_period(period_label)
+        summary = analytics_service.build_summary(
+            device_id=device_id,
+            period=period_label,
+            from_iso=from_iso,
+            to_iso=to_iso,
+        )
+
+    return ReportsResponse(
+        device_id=device_id,
+        period=period_label,
+        **{"from": from_iso},
+        to=to_iso,
+        lifetime=LifetimeStatsResponse(**lifetime),
+        summary=StatsSummaryResponse(**summary),
+    )

@@ -1236,7 +1236,99 @@ For debugging reliability (why Google fails vs why this works):
 
 ---
 
-### 10.5 Charts and rollups
+### 10.5 Reports, aggregates, and self-healing
+
+**Purpose:** Rich all-time and period statistics live on **`/reports`**, not Home. Home stays operational (“where is my phone, how’s today?”). Reports answers “how have I spent my time over weeks, months, and all time?”
+
+#### Data volume assumptions
+
+| Layer | Scale (~3 min uploads) | Used for |
+|-------|------------------------|----------|
+| `location_points` | ~175k rows/year | Raw trail, heatmap binning, analytics **recompute only** |
+| `visits` | ~2k–7k rows/year | Time-at-place, place rankings |
+| `travel_segments` | ~1k–5k rows/year | Travel time, distance, trip counts |
+| `places` | tens–low hundreds | Named clusters, place metadata |
+
+Lifetime and period **reports never scan all raw GPS points** on page load. They aggregate `visits`, `travel_segments`, and `places` via SQL (`SUM`, `COUNT`, `GROUP BY`). Map/history APIs may sample `location_points` for display.
+
+#### Three-tier aggregation strategy
+
+| Tier | What | When | Used by |
+|------|------|------|---------|
+| **1 — SQL on derived tables** | Ad-hoc `SUM`/`GROUP BY` on visits/travels | Any API read | Period summaries, place rankings |
+| **2 — Cached lifetime snapshot** | One JSON blob per device in `analytics_meta` | Updated on analytics recompute | `/reports` all-time band (instant read) |
+| **3 — Daily rollup table** (`daily_stats`) | One row per device per calendar day | Future: built on recompute | `/reports/trends`, monthly charts |
+
+**v1 ships Tier 1 + 2.** Tier 3 is planned when trend charts need monthly buckets without scanning visits.
+
+#### Cached lifetime stats (Tier 2)
+
+Stored in `analytics_meta`:
+
+- `lifetime_stats_json` — totals, top places, tracking span
+- `lifetime_stats_point_at` — `recorded_at` of latest point when cache was built (invalidation key)
+
+**Contents (all time):**
+
+- `first_point_at`, `last_point_at`, `days_with_data`, `point_count`
+- `places_count`, `visits_count`, `travel_trips`
+- `stationary_duration_sec`, `travel_duration_sec`, `travel_distance_m`
+- `top_places` — top 10 by duration `[{ place_id, name, duration_sec }]`
+- `top_place` — #1 place + share of stationary time (optional)
+
+#### Self-healing behavior
+
+Aggregates must recover automatically — no manual “rebuild stats” step required.
+
+| Trigger | Action |
+|---------|--------|
+| New location upload | `ensure_computed()` → full analytics recompute if stale → **refresh lifetime cache** |
+| `GET /api/v1/stats/lifetime` or `/stats/reports` | `ensure_lifetime_stats()` — if cache missing or `lifetime_stats_point_at ≠ latest point`, rebuild from derived tables |
+| Server restart | Same as above on first read; no background daemon required |
+| DB migration / new column | `init_db()` migrations add columns; first read rebuilds cache |
+
+**Invariant:** If visits/travels are up to date with `location_points`, lifetime cache can always be rebuilt deterministically from SQL aggregates.
+
+**Future:** Optional nightly `daily_stats` backfill job; if interrupted, next recompute or first reports read fills gaps (same self-heal pattern).
+
+#### Reports page layout (`/reports`)
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  ALL TIME (fixed band — not controlled by period bar)        │
+│  Since Jul 12, 2026 · 47 days tracked · 12 places          │
+│  48h travel · 1,240 mi · mostly at Home (62%)                │
+├─────────────────────────────────────────────────────────────┤
+│  THIS PERIOD (respects global period bar)                    │
+│  [cards: travel, stationary, places count]                   │
+│  Top places this period (bar chart / table)                  │
+├─────────────────────────────────────────────────────────────┤
+│  Coming soon: Time · Travel · Trends sub-reports             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Home may link “View reports →” but does **not** show lifetime stats.
+
+#### Geographic heatmap (separate from lifetime numbers)
+
+- **Map page** layer toggle — not the Reports hub
+- Server **grid bins** (~50 m cells) refreshed on recompute; browser loads ~500–2k cells, not 175k points
+- Planned after Reports v1
+
+#### Build order (reports track)
+
+| Step | Deliverable | Status |
+|------|-------------|--------|
+| R1 | Lifetime SQL + cached snapshot + self-heal + `GET /stats/lifetime`, `/stats/reports` | **v1.9.12** |
+| R2 | `/reports` hub UI (all-time band + period section) | **v1.9.12** |
+| R3 | `/reports/time` — place ranking table, all-time toggle | Planned |
+| R4 | Map heatmap layer + grid bin table | Planned |
+| R5 | `daily_stats` + `/reports/trends` | Planned |
+| R6 | `/reports/travel` charts + temporal heatmap | Planned |
+
+---
+
+### 10.6 Charts and rollups
 
 **`/reports`** is the charts hub. Subpages organize by question type. All charts support **Day / Week / Month / Year** rollup via the period selector or dedicated granularity toggle.
 
@@ -1316,13 +1408,15 @@ Other    █                      2h
 
 ---
 
-### 10.6 API endpoints needed by web UI
+### 10.7 API endpoints needed by web UI
 
 Extends [§8](#8-api-design):
 
 | Method | Path | Used by |
 |--------|------|---------|
 | `GET` | `/api/v1/stats/dashboard` | Home cards (single call) |
+| `GET` | `/api/v1/stats/reports` | Reports hub (lifetime + period summary) |
+| `GET` | `/api/v1/stats/lifetime` | All-time stats only (cached, self-healing) |
 | `GET` | `/api/v1/stats/summary?period=&granularity=` | Reports, mini charts |
 | `GET` | `/api/v1/stats/travel?period=&granularity=` | Travel reports |
 | `GET` | `/api/v1/stats/trends?from=&to=&granularity=` | Long-term trends |
@@ -1332,7 +1426,7 @@ Extends [§8](#8-api-design):
 
 ---
 
-### 10.7 Responsive layout
+### 10.8 Responsive layout
 
 | Viewport | Behavior |
 |----------|----------|
@@ -1344,7 +1438,7 @@ Primary use is desktop/tablet at home — mobile web is secondary.
 
 ---
 
-### 10.8 Build order (web)
+### 10.9 Build order (web)
 
 | Step | Pages |
 |------|-------|
@@ -1352,7 +1446,8 @@ Primary use is desktop/tablet at home — mobile web is secondary.
 | W2 | `/map` full-screen, `/timeline` |
 | W3 | `/places` list + detail |
 | W4 | `/travel` |
-| W5 | `/reports/time` and `/reports/travel` |
+| W5 | `/reports` hub (lifetime + period) — **R1/R2 shipped v1.9.12** |
+| W5b | `/reports/time` and `/reports/travel` |
 | W6 | `/reports/trends`, `/health`, `/history`, `/settings` |
 
 ### Map stack

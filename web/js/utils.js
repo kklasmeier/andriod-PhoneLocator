@@ -21,6 +21,14 @@ export function formatSpeed(mps) {
 }
 
 const LOCALE = "en-US";
+
+export function formatDateShort(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(LOCALE, { month: "short", day: "numeric", year: "numeric" });
+}
+
 const TIME_OPTS = { hour: "numeric", minute: "2-digit", hour12: true };
 const DATE_OPTS = { month: "short", day: "numeric" };
 
