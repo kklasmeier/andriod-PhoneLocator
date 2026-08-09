@@ -1270,7 +1270,7 @@ Stored in `analytics_meta`:
 
 **Contents (all time):**
 
-- `first_point_at`, `last_point_at`, `days_with_data`, `point_count`
+- `first_point_at`, `last_point_at`, `calendar_days`, `days_with_data`, `days_without_data`, `point_count`
 - `places_count`, `visits_count`, `travel_trips`
 - `stationary_duration_sec`, `travel_duration_sec`, `travel_distance_m`
 - `top_places` — top 10 by duration `[{ place_id, name, duration_sec }]`

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 _test_dir = tempfile.mkdtemp()
 os.environ["PHONE_LOCATOR_API_TOKEN"] = "test-token-lifetime"
+os.environ["PHONE_LOCATOR_TIMEZONE"] = "America/Detroit"
 os.environ["PHONE_LOCATOR_DATABASE_PATH"] = str(Path(_test_dir) / "test.db")
 
 from app import database  # noqa: E402
@@ -111,6 +112,21 @@ class LifetimeStatsTests(unittest.TestCase):
         self.assertIn("frequent_routes", body["lifetime_travel"])
         self.assertNotIn("summary", body)
         self.assertNotIn("period_travel", body)
+
+    def test_lifetime_tracking_day_counts(self) -> None:
+        self._upload("d1", 42.1, -83.1, "2026-07-20T14:00:00Z")
+        self._upload("d2", 42.1, -83.1, "2026-07-22T14:00:00Z")
+
+        response = self.client.get(
+            f"/api/v1/stats/lifetime?device_id={self.device_id}",
+            headers=self.headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["calendar_days"], 3)
+        self.assertEqual(body["days_with_data"], 2)
+        self.assertEqual(body["days_without_data"], 1)
+        self.assertIn("travel_distance_m", body)
 
 
 if __name__ == "__main__":

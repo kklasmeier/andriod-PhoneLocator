@@ -715,8 +715,8 @@ def replace_analytics(
             (device_id, received_at, last_point_recorded_at),
         )
         if last_point_recorded_at is not None:
-            _write_lifetime_stats(conn, device_id, last_point_recorded_at)
             _rebuild_daily_stats(conn, device_id, last_point_recorded_at)
+            _write_lifetime_stats(conn, device_id, last_point_recorded_at)
             _rebuild_heatmap_bins(conn, device_id, last_point_recorded_at)
         conn.commit()
 
@@ -987,7 +987,9 @@ def _empty_lifetime_stats(device_id: str) -> dict[str, Any]:
         "device_id": device_id,
         "first_point_at": None,
         "last_point_at": None,
+        "calendar_days": 0,
         "days_with_data": 0,
+        "days_without_data": 0,
         "point_count": 0,
         "places_count": 0,
         "places_visited_count": 0,
@@ -999,6 +1001,37 @@ def _empty_lifetime_stats(device_id: str) -> dict[str, Any]:
         "top_places": [],
         "top_place": None,
     }
+
+
+def _tracking_day_counts(
+    conn: sqlite3.Connection,
+    device_id: str,
+    first_point_at: str,
+    last_point_at: str,
+    utc_days_with_data: int,
+) -> tuple[int, int, int]:
+    from app.analytics.daily_stats import local_tz
+    from app.analytics.periods import parse_iso
+
+    tz = local_tz()
+    first_day = parse_iso(first_point_at).astimezone(tz).date()
+    last_day = parse_iso(last_point_at).astimezone(tz).date()
+    calendar_days = (last_day - first_day).days + 1
+
+    days_with_data = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM daily_stats
+        WHERE device_id = ? AND point_count > 0
+        """,
+        (device_id,),
+    ).fetchone()["c"]
+    days_with_data = int(days_with_data)
+    if days_with_data == 0 and calendar_days > 0:
+        days_with_data = min(calendar_days, max(utc_days_with_data, 1))
+
+    days_without_data = max(0, calendar_days - days_with_data)
+    return calendar_days, days_with_data, days_without_data
 
 
 def _compute_lifetime_stats(conn: sqlite3.Connection, device_id: str) -> dict[str, Any]:
@@ -1087,11 +1120,21 @@ def _compute_lifetime_stats(conn: sqlite3.Connection, device_id: str) -> dict[st
             "share_pct": round(leader["duration_sec"] / stationary_sec * 100),
         }
 
+    calendar_days, days_with_data, days_without_data = _tracking_day_counts(
+        conn,
+        device_id,
+        point_row["first_point_at"],
+        point_row["last_point_at"],
+        int(point_row["days_with_data"]),
+    )
+
     return {
         "device_id": device_id,
         "first_point_at": point_row["first_point_at"],
         "last_point_at": point_row["last_point_at"],
-        "days_with_data": int(point_row["days_with_data"]),
+        "calendar_days": calendar_days,
+        "days_with_data": days_with_data,
+        "days_without_data": days_without_data,
         "point_count": int(point_row["point_count"]),
         "places_count": int(places_count),
         "places_visited_count": int(visit_row["places_visited_count"] or 0),
@@ -1139,8 +1182,8 @@ def rebuild_lifetime_stats(device_id: str) -> dict[str, Any]:
                 """,
                 (device_id, utc_now_iso(), last_point),
             )
-        stats = _write_lifetime_stats(conn, device_id, last_point)
         _rebuild_daily_stats(conn, device_id, last_point)
+        stats = _write_lifetime_stats(conn, device_id, last_point)
         _rebuild_heatmap_bins(conn, device_id, last_point)
         conn.commit()
     return stats

@@ -247,7 +247,9 @@ class LifetimeStatsResponse(BaseModel):
     device_id: str
     first_point_at: str | None = None
     last_point_at: str | None = None
+    calendar_days: int = 0
     days_with_data: int = 0
+    days_without_data: int = 0
     point_count: int = 0
     places_count: int = 0
     places_visited_count: int = 0

@@ -436,12 +436,17 @@ async function renderReports() {
   const { lifetime, lifetime_travel: lifetimeTravel } = data;
 
   const sinceLine = lifetime.first_point_at
-    ? `Since ${formatDateShort(lifetime.first_point_at)} · ${lifetime.days_with_data.toLocaleString()} days tracked`
+    ? `Tracking since ${formatDateShort(lifetime.first_point_at)} · ${lifetime.days_with_data.toLocaleString()} days with data · ${lifetime.days_without_data.toLocaleString()} days without`
     : "No tracking data yet";
 
   const topPlaceLine = lifetime.top_place
     ? `Mostly at <strong>${escapeHtml(lifetime.top_place.name)}</strong> (${lifetime.top_place.share_pct}% of stationary time)`
     : "";
+
+  const placesSub =
+    lifetime.places_visited_count > 0 && lifetime.places_visited_count !== lifetime.places_count
+      ? `${lifetime.places_visited_count.toLocaleString()} visited`
+      : `${lifetime.visits_count.toLocaleString()} visits`;
 
   const lifetimeBars = buildPlaceBars(lifetime.top_places, true);
 
@@ -453,12 +458,12 @@ async function renderReports() {
         <div class="card">
           <div class="card-label">Places</div>
           <div class="card-value">${lifetime.places_count}</div>
-          <div class="card-sub">${lifetime.visits_count.toLocaleString()} visits</div>
+          <div class="card-sub">${placesSub}</div>
         </div>
         <div class="card">
-          <div class="card-label">Travel</div>
+          <div class="card-label">Travel time</div>
           <div class="card-value">${formatDuration(lifetime.travel_duration_sec)}</div>
-          <div class="card-sub">${formatDistance(lifetime.travel_distance_m)} · ${lifetime.travel_trips} trips</div>
+          <div class="card-sub">${lifetime.travel_trips.toLocaleString()} trips</div>
         </div>
         <div class="card">
           <div class="card-label">Stationary</div>
@@ -466,9 +471,9 @@ async function renderReports() {
           <div class="card-sub">at named places</div>
         </div>
         <div class="card">
-          <div class="card-label">Points</div>
-          <div class="card-value">${lifetime.point_count.toLocaleString()}</div>
-          <div class="card-sub">GPS readings</div>
+          <div class="card-label">Distance</div>
+          <div class="card-value">${formatDistance(lifetime.travel_distance_m)}</div>
+          <div class="card-sub">lifetime travel</div>
         </div>
       </div>
       ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
