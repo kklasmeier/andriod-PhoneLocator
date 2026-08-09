@@ -329,6 +329,37 @@ async function renderHome() {
   renderTrail(history.points || [], latest);
 }
 
+const STORAGE_REPORTS_VIEW = "phoneLocator.reportsView";
+
+function getReportsView() {
+  const stored = sessionStorage.getItem(STORAGE_REPORTS_VIEW);
+  return stored === "period" ? "period" : "lifetime";
+}
+
+function setReportsView(view) {
+  sessionStorage.setItem(STORAGE_REPORTS_VIEW, view);
+  document.querySelectorAll(".reports-subnav button").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === view);
+    btn.setAttribute("aria-selected", btn.dataset.view === view ? "true" : "false");
+  });
+  document.getElementById("reports-lifetime")?.classList.toggle("hidden", view !== "lifetime");
+  document.getElementById("reports-period")?.classList.toggle("hidden", view !== "period");
+}
+
+function buildPlaceBars(places, lifetimeStyle = false) {
+  const max = maxDuration(places || []);
+  return (places || [])
+    .map(
+      (p) => `
+      <div class="bar-row">
+        <span>${escapeHtml(p.name)}</span>
+        <div class="bar-track"><div class="bar-fill${lifetimeStyle ? " lifetime" : ""}" style="width:${max ? Math.round((p.duration_sec / max) * 100) : 0}%"></div></div>
+        <span>${formatDuration(p.duration_sec)}</span>
+      </div>`
+    )
+    .join("");
+}
+
 async function renderReports() {
   setActiveNav("/reports");
   setBanner(null);
@@ -336,6 +367,8 @@ async function renderReports() {
 
   const data = await apiGet("/api/v1/stats/reports", deviceParams(getDashboardParams()));
   const { lifetime, summary } = data;
+  const range = getRange();
+  const activeView = getReportsView();
 
   const sinceLine = lifetime.first_point_at
     ? `Since ${formatDateShort(lifetime.first_point_at)} · ${lifetime.days_with_data.toLocaleString()} days tracked`
@@ -345,34 +378,16 @@ async function renderReports() {
     ? `Mostly at <strong>${escapeHtml(lifetime.top_place.name)}</strong> (${lifetime.top_place.share_pct}% of stationary time)`
     : "";
 
-  const lifetimeBars = (lifetime.top_places || [])
-    .map((p) => {
-      const max = maxDuration(lifetime.top_places);
-      return `
-      <div class="bar-row">
-        <span>${escapeHtml(p.name)}</span>
-        <div class="bar-track"><div class="bar-fill lifetime" style="width:${max ? Math.round((p.duration_sec / max) * 100) : 0}%"></div></div>
-        <span>${formatDuration(p.duration_sec)}</span>
-      </div>`;
-    })
-    .join("");
-
-  const periodBars = (summary.top_places || [])
-    .map((p) => {
-      const max = maxDuration(summary.top_places);
-      return `
-      <div class="bar-row">
-        <span>${escapeHtml(p.name)}</span>
-        <div class="bar-track"><div class="bar-fill" style="width:${max ? Math.round((p.duration_sec / max) * 100) : 0}%"></div></div>
-        <span>${formatDuration(p.duration_sec)}</span>
-      </div>`;
-    })
-    .join("");
+  const lifetimeBars = buildPlaceBars(lifetime.top_places, true);
+  const periodBars = buildPlaceBars(summary.top_places, false);
 
   appEl.innerHTML = `
     <h1 class="page-title">Reports</h1>
-    <section class="lifetime-band panel">
-      <h2>All time</h2>
+    <nav class="reports-subnav" role="tablist" aria-label="Report range">
+      <button type="button" role="tab" class="secondary" data-view="lifetime" aria-selected="false">Lifetime</button>
+      <button type="button" role="tab" class="secondary" data-view="period" aria-selected="false">This period</button>
+    </nav>
+    <section id="reports-lifetime" class="reports-panel panel lifetime-band" role="tabpanel">
       <p class="lifetime-since">${sinceLine}</p>
       <div class="cards lifetime-cards">
         <div class="card">
@@ -397,11 +412,11 @@ async function renderReports() {
         </div>
       </div>
       ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
-      <h3>Top places (all time)</h3>
+      <h3>Top places</h3>
       ${lifetimeBars || '<div class="empty">No place visits yet</div>'}
     </section>
-    <section class="reports-period panel">
-      <h2>This period</h2>
+    <section id="reports-period" class="reports-panel panel reports-period" role="tabpanel">
+      <p class="reports-period-label">${escapeHtml(range.label)} <span class="muted-hint">— use the period bar above to change</span></p>
       <div class="cards">
         <div class="card">
           <div class="card-label">Places</div>
@@ -416,11 +431,16 @@ async function renderReports() {
           <div class="card-value">${formatDuration(summary.stationary_duration_sec)}</div>
         </div>
       </div>
-      <h3>Top places (this period)</h3>
+      <h3>Top places</h3>
       ${periodBars || '<div class="empty">No visits in this period</div>'}
       <p class="reports-coming-soon">More charts (time breakdown, travel trends, heatmap) coming in future updates.</p>
     </section>
   `;
+
+  document.querySelectorAll(".reports-subnav button").forEach((btn) => {
+    btn.addEventListener("click", () => setReportsView(btn.dataset.view));
+  });
+  setReportsView(activeView);
 }
 
 async function renderMapPage() {

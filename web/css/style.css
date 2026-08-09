@@ -728,7 +728,42 @@ button.ring-phone {
 .ring-status.error { color: #fca5a5; }
 
 .lifetime-band {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+}
+
+.reports-subnav {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+}
+
+.reports-subnav button {
+  flex: 1;
+  max-width: 12rem;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.reports-subnav button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.reports-panel.hidden {
+  display: none;
+}
+
+.reports-period-label {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.reports-period-label .muted-hint {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .lifetime-band h2,

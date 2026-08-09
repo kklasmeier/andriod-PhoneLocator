@@ -1295,15 +1295,11 @@ Aggregates must recover automatically — no manual “rebuild stats” step req
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  ALL TIME (fixed band — not controlled by period bar)        │
-│  Since Jul 12, 2026 · 47 days tracked · 12 places          │
-│  48h travel · 1,240 mi · mostly at Home (62%)                │
+│  [ Lifetime | This period ]   ← subnav tabs (one visible)   │
 ├─────────────────────────────────────────────────────────────┤
-│  THIS PERIOD (respects global period bar)                    │
-│  [cards: travel, stationary, places count]                   │
-│  Top places this period (bar chart / table)                  │
-├─────────────────────────────────────────────────────────────┤
-│  Coming soon: Time · Travel · Trends sub-reports             │
+│  Active tab content (cards + top places)                    │
+│  Period tab shows current period label; period bar above    │
+│  controls range. Tab choice persists when changing period.    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
