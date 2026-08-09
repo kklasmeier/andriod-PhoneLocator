@@ -585,23 +585,36 @@ async function renderMapPage() {
     if (heatmapStatus) heatmapStatus.textContent = "Heatmap plugin unavailable";
   }
 
+  function formatHeatmapStatus(data) {
+    const cells = Number(data?.bin_count ?? data?.bins?.length ?? 0);
+    const points = Number(data?.total_points ?? 0);
+    if (!cells) return "No lifetime data yet";
+    const shown = Array.isArray(data?.bins) ? data.bins.length : cells;
+    const suffix = shown < cells ? ` (showing top ${shown.toLocaleString()})` : "";
+    return `${cells.toLocaleString()} cells · ${points.toLocaleString()} points${suffix}`;
+  }
+
   async function ensureHeatmapLoaded() {
     if (heatmapLoaded) return true;
     if (heatmapStatus) heatmapStatus.textContent = "Loading heatmap…";
+    let data;
     try {
-      const data = await apiGet("/api/v1/location/heatmap", deviceParams());
-      renderHeatmap(data.bins || []);
-      heatmapLoaded = true;
-      if (heatmapStatus) {
-        heatmapStatus.textContent = data.bin_count
-          ? `${data.bin_count.toLocaleString()} cells · ${data.total_points.toLocaleString()} points`
-          : "No lifetime data yet";
-      }
-      return (data.bins || []).length > 0;
+      data = await apiGet("/api/v1/location/heatmap", deviceParams(), { timeoutMs: 120000 });
     } catch (err) {
-      if (heatmapStatus) heatmapStatus.textContent = "Could not load heatmap";
+      if (!heatmapLoaded && heatmapStatus) heatmapStatus.textContent = "Could not load heatmap";
       throw err;
     }
+
+    try {
+      renderHeatmap(data.bins || []);
+    } catch (err) {
+      if (heatmapStatus) heatmapStatus.textContent = "Could not render heatmap";
+      throw err;
+    }
+
+    heatmapLoaded = true;
+    if (heatmapStatus) heatmapStatus.textContent = formatHeatmapStatus(data);
+    return (data.bins || []).length > 0;
   }
 
   heatmapToggle?.addEventListener("change", async () => {
@@ -619,7 +632,7 @@ async function renderMapPage() {
         setHeatmapVisible(false);
       }
     } catch {
-      heatmapToggle.checked = false;
+      if (!heatmapLoaded) heatmapToggle.checked = false;
     }
   });
 }

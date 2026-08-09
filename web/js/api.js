@@ -106,9 +106,9 @@ function buildApiUrl(path, params = {}) {
   return url;
 }
 
-async function request(url, options = {}) {
+async function request(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url.toString(), { ...options, signal: controller.signal });
@@ -122,14 +122,18 @@ async function request(url, options = {}) {
   }
 }
 
-export async function apiGet(path, params = {}) {
+export async function apiGet(path, params = {}, options = {}) {
   const token = getToken();
   if (!token) throw new Error("API token not configured — open Settings");
 
   const url = buildApiUrl(path, params);
-  const response = await request(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await request(
+    url,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    options.timeoutMs ?? 20000,
+  );
 
   if (response.status === 401) {
     throw new Error("Unauthorized — check API token in Settings");

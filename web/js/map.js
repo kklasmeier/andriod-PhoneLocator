@@ -205,9 +205,13 @@ export function fitTrail() {
 
 function bringTrailLayersToFront() {
   if (!_map) return;
-  _layers.trail?.bringToFront();
-  _layers.markers?.bringToFront();
-  _layers.accuracy?.bringToFront();
+  for (const layer of [_layers.trail, _layers.markers, _layers.accuracy]) {
+    try {
+      layer?.bringToFront?.();
+    } catch {
+      // Best-effort stacking above the heatmap canvas.
+    }
+  }
 }
 
 export function clearHeatmap() {
@@ -222,7 +226,7 @@ export function renderHeatmap(bins) {
   clearHeatmap();
   if (!bins?.length || typeof L.heatLayer !== "function") return;
 
-  const max = Math.max(...bins.map((bin) => bin.point_count), 1);
+  const max = bins.reduce((peak, bin) => Math.max(peak, bin.point_count || 0), 1);
   const points = bins.map((bin) => [
     bin.center_lat,
     bin.center_lon,
