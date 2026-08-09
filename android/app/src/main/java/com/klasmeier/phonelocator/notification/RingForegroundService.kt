@@ -186,9 +186,9 @@ class RingForegroundService : Service() {
     private suspend fun log(level: String, message: String) {
         AppDatabase.get(this).activityLogDao().insert(
             ActivityLogEntity(
+                timestampEpochMs = System.currentTimeMillis(),
                 level = level,
                 message = message,
-                createdAtEpochMs = System.currentTimeMillis(),
             ),
         )
     }
