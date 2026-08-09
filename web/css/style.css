@@ -12,6 +12,10 @@
   --error: #ef4444;
   --visit: #3b82f6;
   --travel: #a78bfa;
+  --chart-stationary: #6366f1;
+  --chart-travel: #a78bfa;
+  --chart-distance: #38bdf8;
+  --chart-trips: #34d399;
   --radius: 10px;
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -860,6 +864,132 @@ button.ring-phone {
 .reports-travel-meta {
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.trends-panel {
+  margin-top: 1rem;
+}
+
+.trends-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.trends-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.trends-range-hint {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.trends-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.trends-controls button {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.trends-controls button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.trends-controls-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--border);
+  margin: 0 0.15rem;
+}
+
+.trends-charts {
+  display: grid;
+  gap: 1rem;
+}
+
+.chart-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem 1rem;
+}
+
+.chart-card h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.chart-host {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-grid-line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-legend-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+}
+
+.chart-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (min-width: 900px) {
+  .trends-charts {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trends-charts .chart-card:first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .inline-rename {

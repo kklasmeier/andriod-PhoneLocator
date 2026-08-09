@@ -97,6 +97,22 @@ CREATE TABLE IF NOT EXISTS analytics_meta (
     last_point_recorded_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS daily_stats (
+    device_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    point_count INTEGER NOT NULL DEFAULT 0,
+    visits_count INTEGER NOT NULL DEFAULT 0,
+    places_visited_count INTEGER NOT NULL DEFAULT 0,
+    stationary_duration_sec INTEGER NOT NULL DEFAULT 0,
+    travel_duration_sec INTEGER NOT NULL DEFAULT 0,
+    travel_distance_m REAL NOT NULL DEFAULT 0,
+    travel_trips INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (device_id, day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_stats_device_day
+    ON daily_stats(device_id, day);
+
 CREATE TABLE IF NOT EXISTS device_settings (
     device_id TEXT PRIMARY KEY,
     auto_rename_places INTEGER NOT NULL DEFAULT 1,
@@ -170,6 +186,7 @@ def _migrate_analytics_meta(conn: sqlite3.Connection) -> None:
     additions = {
         "lifetime_stats_json": "TEXT",
         "lifetime_stats_point_at": "TEXT",
+        "daily_stats_point_at": "TEXT",
     }
     for name, ddl in additions.items():
         if name not in columns:
@@ -683,6 +700,7 @@ def replace_analytics(
         )
         if last_point_recorded_at is not None:
             _write_lifetime_stats(conn, device_id, last_point_recorded_at)
+            _rebuild_daily_stats(conn, device_id, last_point_recorded_at)
         conn.commit()
 
 
@@ -1105,8 +1123,133 @@ def rebuild_lifetime_stats(device_id: str) -> dict[str, Any]:
                 (device_id, utc_now_iso(), last_point),
             )
         stats = _write_lifetime_stats(conn, device_id, last_point)
+        _rebuild_daily_stats(conn, device_id, last_point)
         conn.commit()
     return stats
+
+
+def _rebuild_daily_stats(
+    conn: sqlite3.Connection,
+    device_id: str,
+    last_point_recorded_at: str,
+) -> None:
+    from app.analytics.daily_stats import compute_daily_stats_rows
+
+    visits = conn.execute(
+        """
+        SELECT place_id, started_at, ended_at, duration_sec
+        FROM visits
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchall()
+    travels = conn.execute(
+        """
+        SELECT started_at, ended_at, duration_sec, distance_m
+        FROM travel_segments
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchall()
+    points = conn.execute(
+        """
+        SELECT recorded_at
+        FROM location_points
+        WHERE device_id = ?
+        """,
+        (device_id,),
+    ).fetchall()
+
+    rows = compute_daily_stats_rows(
+        [dict(row) for row in visits],
+        [dict(row) for row in travels],
+        [dict(row) for row in points],
+    )
+
+    conn.execute("DELETE FROM daily_stats WHERE device_id = ?", (device_id,))
+    for row in rows:
+        conn.execute(
+            """
+            INSERT INTO daily_stats (
+                device_id, day, point_count, visits_count, places_visited_count,
+                stationary_duration_sec, travel_duration_sec, travel_distance_m, travel_trips
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                device_id,
+                row["day"],
+                row["point_count"],
+                row["visits_count"],
+                row["places_visited_count"],
+                row["stationary_duration_sec"],
+                row["travel_duration_sec"],
+                row["travel_distance_m"],
+                row["travel_trips"],
+            ),
+        )
+
+    conn.execute(
+        """
+        UPDATE analytics_meta
+        SET daily_stats_point_at = ?
+        WHERE device_id = ?
+        """,
+        (last_point_recorded_at, device_id),
+    )
+
+
+def rebuild_daily_stats(device_id: str) -> None:
+    last_point = get_latest_point_recorded_at(device_id)
+    if last_point is None:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM daily_stats WHERE device_id = ?", (device_id,))
+            conn.commit()
+        return
+
+    with get_connection() as conn:
+        meta = conn.execute(
+            "SELECT device_id FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        if meta is None:
+            conn.execute(
+                """
+                INSERT INTO analytics_meta (device_id, last_computed_at, last_point_recorded_at)
+                VALUES (?, ?, ?)
+                """,
+                (device_id, utc_now_iso(), last_point),
+            )
+        _rebuild_daily_stats(conn, device_id, last_point)
+        conn.commit()
+
+
+def get_daily_stats_point_at(device_id: str) -> str | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT daily_stats_point_at FROM analytics_meta WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+    return row["daily_stats_point_at"] if row else None
+
+
+def get_daily_stats_range(
+    device_id: str,
+    from_day: str,
+    to_day: str,
+) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                day, point_count, visits_count, places_visited_count,
+                stationary_duration_sec, travel_duration_sec, travel_distance_m, travel_trips
+            FROM daily_stats
+            WHERE device_id = ? AND day >= ? AND day <= ?
+            ORDER BY day ASC
+            """,
+            (device_id, from_day, to_day),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def get_cached_lifetime_stats(device_id: str) -> tuple[dict[str, Any] | None, str | None]:

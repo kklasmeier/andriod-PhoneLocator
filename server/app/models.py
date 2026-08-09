@@ -271,19 +271,32 @@ class ReportsTravelOut(BaseModel):
     duration_sec: int
     distance_m: float
     frequent_routes: list[FrequentRouteOut] = Field(default_factory=list)
-    segments: list[TravelSegmentOut] = Field(default_factory=list)
-    recent_segments: list[TravelSegmentOut] = Field(default_factory=list)
 
 
 class ReportsResponse(BaseModel):
     device_id: str
-    period: str
+    lifetime: LifetimeStatsResponse
+    lifetime_travel: ReportsTravelOut
+
+
+class TrendsBucketOut(BaseModel):
+    bucket: str
+    label: str
+    point_count: int = 0
+    visits_count: int = 0
+    places_visited_count: int = 0
+    stationary_duration_sec: int = 0
+    travel_duration_sec: int = 0
+    travel_distance_m: float = 0.0
+    travel_trips: int = 0
+
+
+class TrendsResponse(BaseModel):
+    device_id: str
+    granularity: str
     from_: str = Field(alias="from")
     to: str
-    lifetime: LifetimeStatsResponse
-    summary: StatsSummaryResponse
-    lifetime_travel: ReportsTravelOut
-    period_travel: ReportsTravelOut
+    buckets: list[TrendsBucketOut] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True, "ser_json_by_alias": True}
 

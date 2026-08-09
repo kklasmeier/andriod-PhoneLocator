@@ -1257,9 +1257,9 @@ Lifetime and period **reports never scan all raw GPS points** on page load. They
 |------|------|------|---------|
 | **1 — SQL on derived tables** | Ad-hoc `SUM`/`GROUP BY` on visits/travels | Any API read | Period summaries, place rankings |
 | **2 — Cached lifetime snapshot** | One JSON blob per device in `analytics_meta` | Updated on analytics recompute | `/reports` all-time band (instant read) |
-| **3 — Daily rollup table** (`daily_stats`) | One row per device per calendar day | Future: built on recompute | `/reports/trends`, monthly charts |
+| **3 — Daily rollup table** (`daily_stats`) | One row per device per calendar day | Rebuilt on analytics recompute | `/stats/trends`, Reports charts |
 
-**v1 ships Tier 1 + 2.** Tier 3 is planned when trend charts need monthly buckets without scanning visits.
+**v1 ships Tier 1 + 2 + 3 (daily_stats).** Tier 3 powers trend charts on Reports.
 
 #### Cached lifetime stats (Tier 2)
 
@@ -1284,6 +1284,7 @@ Aggregates must recover automatically — no manual “rebuild stats” step req
 |---------|--------|
 | New location upload | `ensure_computed()` → full analytics recompute if stale → **refresh lifetime cache** |
 | `GET /api/v1/stats/lifetime` or `/stats/reports` | `ensure_lifetime_stats()` — if cache missing or `lifetime_stats_point_at ≠ latest point`, rebuild from derived tables |
+| `GET /api/v1/stats/trends` | `ensure_daily_stats()` — if `daily_stats_point_at ≠ latest point`, rebuild `daily_stats` from visits/travels/points |
 | Server restart | Same as above on first read; no background daemon required |
 | DB migration / new column | `init_db()` migrations add columns; first read rebuilds cache |
 
@@ -1295,11 +1296,8 @@ Aggregates must recover automatically — no manual “rebuild stats” step req
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  [ Lifetime | This period ]   ← subnav tabs (one visible)   │
-├─────────────────────────────────────────────────────────────┤
-│  Active tab content (cards + top places)                    │
-│  Period tab shows current period label; period bar above    │
-│  controls range. Tab choice persists when changing period.    │
+│  Lifetime summary — cards, top places, frequent routes      │
+│  Trends — time/travel/distance charts (30d / 90d / 1y)      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1316,10 +1314,11 @@ Home may link “View reports →” but does **not** show lifetime stats.
 | Step | Deliverable | Status |
 |------|-------------|--------|
 | R1 | Lifetime SQL + cached snapshot + self-heal + `GET /stats/lifetime`, `/stats/reports` | **v1.9.12** |
-| R2 | `/reports` hub UI (all-time band + period section) | **v1.9.12** |
-| R3 | Travel sections on Reports (routes + trip tables) | **v1.9.15** |
+| R2 | `/reports` hub UI (lifetime summary) | **v1.9.12** |
+| R3 | Travel sections on Reports (frequent routes only) | **v1.9.15** |
+| R3b | Reports lifetime-only — drop period tab & trip list | **v1.9.17** |
 | R4 | Map heatmap layer + grid bin table | Planned |
-| R5 | `daily_stats` + `/reports/trends` | Planned |
+| R5 | `daily_stats` + `/stats/trends` + Reports trend charts | **v1.9.18** |
 | R6 | `/reports/travel` charts + temporal heatmap | Planned |
 
 ---

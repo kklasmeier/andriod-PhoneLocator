@@ -1,3 +1,4 @@
+import { renderBarChart, renderStackedBarChart, formatTrendDistance } from "./charts.js";
 import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
 import { destroyMap, fitTrail, initMap, refreshMapSize, renderPlace, renderTrail, waitForLayout } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
@@ -329,23 +330,6 @@ async function renderHome() {
   renderTrail(history.points || [], latest);
 }
 
-const STORAGE_REPORTS_VIEW = "phoneLocator.reportsView";
-
-function getReportsView() {
-  const stored = sessionStorage.getItem(STORAGE_REPORTS_VIEW);
-  return stored === "period" ? "period" : "lifetime";
-}
-
-function setReportsView(view) {
-  sessionStorage.setItem(STORAGE_REPORTS_VIEW, view);
-  document.querySelectorAll(".reports-subnav button").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === view);
-    btn.setAttribute("aria-selected", btn.dataset.view === view ? "true" : "false");
-  });
-  document.getElementById("reports-lifetime")?.classList.toggle("hidden", view !== "lifetime");
-  document.getElementById("reports-period")?.classList.toggle("hidden", view !== "period");
-}
-
 function buildPlaceBars(places, lifetimeStyle = false) {
   const max = maxDuration(places || []);
   return (places || [])
@@ -384,57 +368,63 @@ function buildFrequentRoutesHtml(routes) {
     </div>`;
 }
 
-function buildTravelSegmentsHtml(segments, { compact = false } = {}) {
-  if (!segments?.length) {
-    return '<div class="empty">No trips in this range</div>';
-  }
-  if (compact) {
-    return segments
-      .map(
-        (trip) => `
-        <div class="reports-travel-card">
-          <div class="reports-travel-route">${escapeHtml(trip.route_label || `${trip.from_place_name || "Unknown"} → ${trip.to_place_name || "Unknown"}`)}</div>
-          <div class="reports-travel-meta">${formatTimeShort(trip.started_at)} · ${formatDuration(trip.duration_sec)} · ${formatDistance(trip.distance_m)}</div>
-        </div>`
-      )
-      .join("");
-  }
-  const rows = segments
-    .map(
-      (trip) => `
-      <tr>
-        <td>${formatTime(trip.started_at)}</td>
-        <td>${escapeHtml(trip.route_label || `${trip.from_place_name || "Unknown"} → ${trip.to_place_name || "Unknown"}`)}</td>
-        <td>${formatDuration(trip.duration_sec)}</td>
-        <td>${formatDistance(trip.distance_m)}</td>
-        <td>${formatSpeed(trip.avg_speed_mps)}</td>
-      </tr>`
-    )
-    .join("");
-  return `
-    <div class="table-wrap reports-travel-table">
-      <table>
-        <thead><tr><th>Started</th><th>Route</th><th>Duration</th><th>Distance</th><th>Avg speed</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-function buildTravelSection(travel, { lifetime = false } = {}) {
-  const tripsLabel = lifetime ? "Latest trips" : "Trips";
-  const tripItems = lifetime ? travel.recent_segments : travel.segments;
-  const tripsHint = lifetime
-    ? "Most recent trips across all time"
-    : "All trips in the selected period";
+function buildTravelSection(travel) {
   return `
     <section class="reports-travel-section">
       <h3>Travel <span class="section-count">(${travel.trip_count} trips · ${formatDistance(travel.distance_m)})</span></h3>
       <h4>Frequent routes</h4>
       ${buildFrequentRoutesHtml(travel.frequent_routes)}
-      <h4>${tripsLabel}</h4>
-      <p class="reports-section-hint">${tripsHint}</p>
-      ${buildTravelSegmentsHtml(tripItems, { compact: lifetime })}
     </section>`;
+}
+
+function trendsRangeDays(rangeDays) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - (rangeDays - 1));
+  return {
+    from: localDateKey(start.toISOString()),
+    to: localDateKey(end.toISOString()),
+  };
+}
+
+function renderTrendCharts(buckets) {
+  renderStackedBarChart(document.getElementById("chart-time-split"), {
+    buckets,
+    series: [
+      { key: "stationary_duration_sec", label: "Stationary", color: "var(--chart-stationary)" },
+      { key: "travel_duration_sec", label: "Travel", color: "var(--chart-travel)" },
+    ],
+    emptyLabel: "No activity in this range",
+  });
+  renderBarChart(document.getElementById("chart-travel-distance"), {
+    buckets,
+    valueKey: "travel_distance_m",
+    color: "var(--chart-distance)",
+    formatValue: formatTrendDistance,
+    label: "Distance",
+    emptyLabel: "No travel distance in this range",
+  });
+  renderBarChart(document.getElementById("chart-travel-trips"), {
+    buckets,
+    valueKey: "travel_trips",
+    color: "var(--chart-trips)",
+    formatValue: (value) => `${Math.round(value)}`,
+    label: "Trips",
+    emptyLabel: "No trips in this range",
+  });
+}
+
+async function loadTrends({ rangeDays = 90, granularity = null } = {}) {
+  const range = trendsRangeDays(rangeDays);
+  const params = deviceParams({ from: range.from, to: range.to });
+  if (granularity) params.granularity = granularity;
+  const trends = await apiGet("/api/v1/stats/trends", params);
+  renderTrendCharts(trends.buckets || []);
+  const hint = document.getElementById("trends-range-hint");
+  if (hint) {
+    hint.textContent = `${trends.from} → ${trends.to} · ${trends.granularity} buckets`;
+  }
+  return trends;
 }
 
 async function renderReports() {
@@ -442,10 +432,8 @@ async function renderReports() {
   setBanner(null);
   appEl.innerHTML = `<div class="loading">Loading reports…</div>`;
 
-  const data = await apiGet("/api/v1/stats/reports", deviceParams(getDashboardParams()));
-  const { lifetime, summary, lifetime_travel: lifetimeTravel, period_travel: periodTravel } = data;
-  const range = getRange();
-  const activeView = getReportsView();
+  const data = await apiGet("/api/v1/stats/reports", deviceParams());
+  const { lifetime, lifetime_travel: lifetimeTravel } = data;
 
   const sinceLine = lifetime.first_point_at
     ? `Since ${formatDateShort(lifetime.first_point_at)} · ${lifetime.days_with_data.toLocaleString()} days tracked`
@@ -456,15 +444,10 @@ async function renderReports() {
     : "";
 
   const lifetimeBars = buildPlaceBars(lifetime.top_places, true);
-  const periodBars = buildPlaceBars(summary.top_places, false);
 
   appEl.innerHTML = `
     <h1 class="page-title">Reports</h1>
-    <nav class="reports-subnav" role="tablist" aria-label="Report range">
-      <button type="button" role="tab" class="secondary" data-view="lifetime" aria-selected="false">Lifetime</button>
-      <button type="button" role="tab" class="secondary" data-view="period" aria-selected="false">This period</button>
-    </nav>
-    <section id="reports-lifetime" class="reports-panel panel lifetime-band" role="tabpanel">
+    <section class="reports-panel panel lifetime-band">
       <p class="lifetime-since">${sinceLine}</p>
       <div class="cards lifetime-cards">
         <div class="card">
@@ -491,36 +474,70 @@ async function renderReports() {
       ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
       <h3>Top places</h3>
       ${lifetimeBars || '<div class="empty">No place visits yet</div>'}
-      ${buildTravelSection(lifetimeTravel, { lifetime: true })}
+      ${buildTravelSection(lifetimeTravel)}
     </section>
-    <section id="reports-period" class="reports-panel panel reports-period" role="tabpanel">
-      <p class="reports-period-label">${escapeHtml(range.label)} <span class="muted-hint">— use the period bar above to change</span></p>
-      <div class="cards">
-        <div class="card">
-          <div class="card-label">Places</div>
-          <div class="card-value">${summary.places_count}</div>
+    <section class="reports-panel panel trends-panel">
+      <div class="trends-header">
+        <h2>Trends</h2>
+        <p id="trends-range-hint" class="trends-range-hint muted-hint">Loading…</p>
+      </div>
+      <div class="trends-controls" role="group" aria-label="Trend range">
+        <button type="button" class="secondary" data-range-days="30">30 days</button>
+        <button type="button" class="secondary active" data-range-days="90">90 days</button>
+        <button type="button" class="secondary" data-range-days="365">1 year</button>
+        <span class="trends-controls-divider"></span>
+        <button type="button" class="secondary" data-granularity="day">Daily</button>
+        <button type="button" class="secondary" data-granularity="week">Weekly</button>
+        <button type="button" class="secondary" data-granularity="month">Monthly</button>
+      </div>
+      <div class="trends-charts">
+        <div class="chart-card">
+          <h3>Time at places vs travel</h3>
+          <div id="chart-time-split" class="chart-host"></div>
         </div>
-        <div class="card">
-          <div class="card-label">Travel</div>
-          <div class="card-value">${formatDuration(summary.travel_duration_sec)}</div>
-          <div class="card-sub">${formatDistance(summary.travel_distance_m)} · ${summary.travel_trips} trips</div>
+        <div class="chart-card">
+          <h3>Travel distance</h3>
+          <div id="chart-travel-distance" class="chart-host"></div>
         </div>
-        <div class="card">
-          <div class="card-label">Stationary</div>
-          <div class="card-value">${formatDuration(summary.stationary_duration_sec)}</div>
+        <div class="chart-card">
+          <h3>Trips</h3>
+          <div id="chart-travel-trips" class="chart-host"></div>
         </div>
       </div>
-      <h3>Places <span class="section-count">(${summary.places_count})</span></h3>
-      ${periodBars || '<div class="empty">No visits in this period</div>'}
-      ${buildTravelSection(periodTravel)}
-      <p class="reports-coming-soon">Trend charts and map heatmap coming in future updates.</p>
     </section>
   `;
 
-  document.querySelectorAll(".reports-subnav button").forEach((btn) => {
-    btn.addEventListener("click", () => setReportsView(btn.dataset.view));
+  let rangeDays = 90;
+  let granularity = null;
+
+  const load = () => loadTrends({ rangeDays, granularity });
+  await load();
+
+  document.querySelectorAll(".trends-controls [data-range-days]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      rangeDays = Number(btn.dataset.rangeDays);
+      document.querySelectorAll(".trends-controls [data-range-days]").forEach((el) => {
+        el.classList.toggle("active", el === btn);
+      });
+      await load();
+    });
   });
-  setReportsView(activeView);
+
+  document.querySelectorAll(".trends-controls [data-granularity]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const selected = btn.dataset.granularity;
+      if (granularity === selected) {
+        granularity = null;
+        btn.classList.remove("active");
+      } else {
+        granularity = selected;
+        document.querySelectorAll(".trends-controls [data-granularity]").forEach((el) => {
+          el.classList.toggle("active", el === btn);
+        });
+      }
+      await load();
+    });
+  });
 }
 
 async function renderMapPage() {
@@ -1281,6 +1298,7 @@ async function navigate() {
     const route = parseRoute();
     normalizeRouteHash(route);
     destroyMap();
+    document.getElementById("period-bar")?.classList.toggle("hidden", route === "/reports");
 
     if (!getToken() && route !== "/settings") {
       setActiveNav("/settings");

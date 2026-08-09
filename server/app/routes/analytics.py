@@ -22,6 +22,7 @@ from app.models import (
     StatsSummaryResponse,
     TravelResponse,
     TravelSegmentOut,
+    TrendsResponse,
     VisitsTimelineResponse,
 )
 
@@ -38,8 +39,6 @@ def _reports_travel_out(data: dict) -> ReportsTravelOut:
         duration_sec=data["duration_sec"],
         distance_m=data["distance_m"],
         frequent_routes=[FrequentRouteOut(**row) for row in data["frequent_routes"]],
-        segments=[TravelSegmentOut(**row) for row in data["segments"]],
-        recent_segments=[TravelSegmentOut(**row) for row in data["recent_segments"]],
     )
 
 
@@ -174,54 +173,29 @@ def stats_lifetime(
 def stats_reports(
     device_id: Annotated[str, Query(min_length=1, max_length=128)],
     _: Annotated[None, Depends(verify_api_token)],
-    from_value: Annotated[str | None, Query(alias="from")] = None,
-    to_value: Annotated[str | None, Query(alias="to")] = None,
-    period: Annotated[str | None, Query()] = None,
 ) -> ReportsResponse:
     lifetime = analytics_service.ensure_lifetime_stats(device_id)
-
-    if from_value and to_value:
-        from_iso, to_iso = from_value, to_value
-        period_label = period or "custom"
-        summary = analytics_service.build_summary(
-            device_id=device_id,
-            period=period_label,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            max_places=None,
-        )
-    else:
-        period_label = period or "today"
-        from_iso, to_iso = resolve_period(period_label)
-        summary = analytics_service.build_summary(
-            device_id=device_id,
-            period=period_label,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            max_places=None,
-        )
-
-    period_travel = analytics_service.build_reports_travel(
-        device_id,
-        from_iso,
-        to_iso,
-        segment_limit=200,
-    )
-    lifetime_travel = analytics_service.build_reports_travel(
-        device_id,
-        None,
-        None,
-        segment_limit=500,
-        recent_limit=30,
-    )
+    lifetime_travel = analytics_service.build_reports_travel(device_id)
 
     return ReportsResponse(
         device_id=device_id,
-        period=period_label,
-        **{"from": from_iso},
-        to=to_iso,
         lifetime=LifetimeStatsResponse(**lifetime),
-        summary=StatsSummaryResponse(**summary),
         lifetime_travel=_reports_travel_out(lifetime_travel),
-        period_travel=_reports_travel_out(period_travel),
     )
+
+
+@stats_router.get("/trends", response_model=TrendsResponse)
+def stats_trends(
+    device_id: Annotated[str, Query(min_length=1, max_length=128)],
+    _: Annotated[None, Depends(verify_api_token)],
+    from_value: Annotated[str | None, Query(alias="from")] = None,
+    to_value: Annotated[str | None, Query(alias="to")] = None,
+    granularity: Annotated[Literal["day", "week", "month"] | None, Query()] = None,
+) -> TrendsResponse:
+    data = analytics_service.build_trends(
+        device_id,
+        from_day=from_value,
+        to_day=to_value,
+        granularity=granularity,
+    )
+    return TrendsResponse(**data)

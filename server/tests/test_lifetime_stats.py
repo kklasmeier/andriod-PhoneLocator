@@ -95,22 +95,22 @@ class LifetimeStatsTests(unittest.TestCase):
         )
         self.assertEqual(second.json()["point_count"], 2)
 
-    def test_reports_includes_lifetime_and_period(self) -> None:
+    def test_reports_includes_lifetime_only(self) -> None:
         self._upload("lt-r1", 42.1, -83.1, "2026-07-26T10:00:00Z")
         response = self.client.get(
-            f"/api/v1/stats/reports?device_id={self.device_id}&from=2026-07-26T00:00:00Z&to=2026-07-27T00:00:00Z",
+            f"/api/v1/stats/reports?device_id={self.device_id}",
             headers=self.headers,
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
+        self.assertEqual(body["device_id"], self.device_id)
         self.assertIn("lifetime", body)
-        self.assertIn("summary", body)
         self.assertEqual(body["lifetime"]["point_count"], 1)
-        self.assertEqual(body["summary"]["device_id"], self.device_id)
-        self.assertIn("period_travel", body)
         self.assertIn("lifetime_travel", body)
-        self.assertIn("trip_count", body["period_travel"])
-        self.assertIsInstance(body["period_travel"]["segments"], list)
+        self.assertIn("trip_count", body["lifetime_travel"])
+        self.assertIn("frequent_routes", body["lifetime_travel"])
+        self.assertNotIn("summary", body)
+        self.assertNotIn("period_travel", body)
 
 
 if __name__ == "__main__":

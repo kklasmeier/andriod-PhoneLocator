@@ -83,6 +83,51 @@ def ensure_lifetime_stats(device_id: str) -> dict:
     return database.rebuild_lifetime_stats(device_id)
 
 
+def ensure_daily_stats(device_id: str) -> None:
+    ensure_computed(device_id)
+    latest = database.get_latest_point_recorded_at(device_id)
+    if latest is None:
+        return
+    cached_at = database.get_daily_stats_point_at(device_id)
+    if cached_at != latest:
+        database.rebuild_daily_stats(device_id)
+
+
+def build_trends(
+    device_id: str,
+    *,
+    from_day: str | None = None,
+    to_day: str | None = None,
+    granularity: str | None = None,
+) -> dict:
+    from app.analytics.daily_stats import (
+        aggregate_trend_buckets,
+        default_trends_day_range,
+        iso_to_local_day,
+        pick_granularity,
+    )
+
+    ensure_daily_stats(device_id)
+
+    if from_day is None or to_day is None:
+        from_day, to_day = default_trends_day_range()
+    elif "T" in from_day:
+        from_day = iso_to_local_day(from_day)
+        to_day = iso_to_local_day(to_day)
+
+    resolved_granularity = pick_granularity(from_day, to_day, granularity)
+    rows = database.get_daily_stats_range(device_id, from_day, to_day)
+    buckets = aggregate_trend_buckets(rows, resolved_granularity)
+
+    return {
+        "device_id": device_id,
+        "granularity": resolved_granularity,
+        "from": from_day,
+        "to": to_day,
+        "buckets": buckets,
+    }
+
+
 def build_summary(
     device_id: str,
     period: str | None = None,
@@ -277,34 +322,22 @@ def build_route_frequency(segments: list[dict], *, limit: int = 5) -> list[dict]
 
 def build_reports_travel(
     device_id: str,
-    from_iso: str | None = None,
-    to_iso: str | None = None,
     *,
-    segment_limit: int = 200,
-    recent_limit: int = 30,
+    segment_limit: int = 500,
     route_limit: int = 5,
 ) -> dict:
     segments = build_travel_list(
         device_id=device_id,
-        from_iso=from_iso,
-        to_iso=to_iso,
+        from_iso=None,
+        to_iso=None,
         limit=segment_limit,
         order="asc",
-    )
-    recent_segments = build_travel_list(
-        device_id=device_id,
-        from_iso=from_iso,
-        to_iso=to_iso,
-        limit=recent_limit,
-        order="desc",
     )
     return {
         "trip_count": len(segments),
         "duration_sec": sum(int(segment["duration_sec"]) for segment in segments),
         "distance_m": float(sum(float(segment["distance_m"]) for segment in segments)),
         "frequent_routes": build_route_frequency(segments, limit=route_limit),
-        "segments": segments,
-        "recent_segments": recent_segments,
     }
 
 
