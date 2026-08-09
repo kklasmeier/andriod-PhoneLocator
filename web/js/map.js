@@ -3,6 +3,47 @@ let _mapGeneration = 0;
 let _resizeTimers = [];
 let _layers = { trail: null, markers: null, accuracy: null, heatmap: null };
 
+const STORAGE_BASEMAP = "phoneLocator.basemap";
+
+export const BASEMAPS = {
+  osm: {
+    id: "osm",
+    label: "OpenStreetMap",
+    description: "Local place names",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    options: {
+      attribution: "&copy; OpenStreetMap contributors",
+      maxZoom: 19,
+    },
+  },
+  esri: {
+    id: "esri",
+    label: "Esri World Street Map",
+    description: "English labels worldwide",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+    options: {
+      attribution:
+        "Tiles &copy; Esri &mdash; Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap",
+      maxZoom: 19,
+    },
+  },
+};
+
+export function getBasemapId() {
+  const stored = localStorage.getItem(STORAGE_BASEMAP);
+  return stored && BASEMAPS[stored] ? stored : "osm";
+}
+
+export function setBasemapId(id) {
+  if (BASEMAPS[id]) {
+    localStorage.setItem(STORAGE_BASEMAP, id);
+  }
+}
+
+export function getBasemapOptions() {
+  return Object.values(BASEMAPS);
+}
+
 function waitForLayout() {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -54,11 +95,8 @@ export function initMap(container, { tall = false } = {}) {
   if (panel && tall) panel.classList.add("tall");
 
   _map = L.map(el, { zoomControl: true });
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
-    attribution:
-      "Tiles &copy; Esri &mdash; Esri, TomTom, Garmin, FAO, NOAA, USGS, &copy; OpenStreetMap",
-    maxZoom: 19,
-  }).addTo(_map);
+  const basemap = BASEMAPS[getBasemapId()];
+  L.tileLayer(basemap.url, basemap.options).addTo(_map);
 
   _layers.trail = L.layerGroup().addTo(_map);
   _layers.markers = L.layerGroup().addTo(_map);

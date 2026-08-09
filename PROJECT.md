@@ -1449,7 +1449,7 @@ Primary use is desktop/tablet at home — mobile web is secondary.
 
 ### Map stack
 
-- **Leaflet** + **Esri World Street Map** tiles (English labels, no API key)
+- **Leaflet** + selectable basemap (**OpenStreetMap** default, optional Esri English labels)
 - Optional: Esri satellite layer toggle
 
 ### Access

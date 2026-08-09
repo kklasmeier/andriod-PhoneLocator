@@ -1,6 +1,6 @@
 import { renderBarChart, renderStackedBarChart, formatTrendDistance } from "./charts.js";
 import { apiGet, apiPost, apiPut, buildSetupUrl, consumeSetupParams, deviceParams, getDeviceId, getToken, saveSettings } from "./api.js";
-import { destroyMap, fitTrail, heatmapSupported, initMap, refreshMapSize, renderHeatmap, renderPlace, renderTrail, setHeatmapVisible, waitForLayout } from "./map.js";
+import { destroyMap, fitTrail, getBasemapId, getBasemapOptions, heatmapSupported, initMap, refreshMapSize, renderHeatmap, renderPlace, renderTrail, setBasemapId, setHeatmapVisible, waitForLayout } from "./map.js";
 import { getDashboardParams, getRange, initPeriodBar, localDateKey } from "./period.js";
 import { APP_VERSION } from "./version.js";
 import {
@@ -1188,6 +1188,13 @@ async function renderSettingsBody() {
     }
   }
 
+  const basemapOptions = getBasemapOptions()
+    .map(
+      (basemap) =>
+        `<option value="${basemap.id}" ${getBasemapId() === basemap.id ? "selected" : ""}>${escapeHtml(basemap.label)} — ${escapeHtml(basemap.description)}</option>`
+    )
+    .join("");
+
   appEl.innerHTML = `
     <h1 class="page-title">Settings</h1>
     <div class="panel form-grid">
@@ -1205,6 +1212,17 @@ async function renderSettingsBody() {
         <button type="button" class="secondary" id="test-connection">Test connection</button>
       </div>
       <p id="settings-msg" style="font-size:0.9rem;color:var(--muted)"></p>
+    </div>
+    <div class="panel form-grid">
+      <h3>Map</h3>
+      <label>Basemap
+        <select id="cfg-basemap">${basemapOptions}</select>
+      </label>
+      <p class="setup-help">
+        OpenStreetMap shows local-language labels (e.g. Deutsch in Germany). Esri uses English labels
+        worldwide. Reopen a map page after changing.
+      </p>
+      <p id="basemap-msg" style="font-size:0.9rem;color:var(--muted)"></p>
     </div>
     <div class="panel form-grid place-naming-panel">
       <h3>Place names</h3>
@@ -1253,6 +1271,12 @@ async function renderSettingsBody() {
       apiBase: document.getElementById("cfg-api-base").value,
     });
     document.getElementById("settings-msg").textContent = "Saved.";
+  });
+
+  document.getElementById("cfg-basemap")?.addEventListener("change", (event) => {
+    setBasemapId(event.target.value);
+    const msg = document.getElementById("basemap-msg");
+    if (msg) msg.textContent = "Basemap saved. Reopen Map or Home to apply.";
   });
 
   document.getElementById("cfg-auto-rename")?.addEventListener("change", async (event) => {
