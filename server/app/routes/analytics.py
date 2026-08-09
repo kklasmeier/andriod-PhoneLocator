@@ -175,6 +175,7 @@ def stats_reports(
             period=period_label,
             from_iso=from_iso,
             to_iso=to_iso,
+            max_places=None,
         )
     else:
         period_label = period or "today"
@@ -184,6 +185,7 @@ def stats_reports(
             period=period_label,
             from_iso=from_iso,
             to_iso=to_iso,
+            max_places=None,
         )
 
     return ReportsResponse(

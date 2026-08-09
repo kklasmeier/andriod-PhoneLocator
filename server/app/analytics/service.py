@@ -89,6 +89,7 @@ def build_summary(
     from_iso: str | None = None,
     to_iso: str | None = None,
     include_week_teaser: bool = False,
+    max_places: int | None = 3,
 ) -> dict:
     ensure_computed(device_id)
     if from_iso is None or to_iso is None:
@@ -98,7 +99,8 @@ def build_summary(
     else:
         period = period or "custom"
 
-    visits = database.get_visits(device_id, from_iso=from_iso, to_iso=to_iso)
+    visit_limit = None if max_places is None else 500
+    visits = database.get_visits(device_id, from_iso=from_iso, to_iso=to_iso, limit=visit_limit)
     travels = database.get_travel_segments(device_id, from_iso=from_iso, to_iso=to_iso)
     places_by_id = {p["id"]: p for p in database.get_places(device_id)}
 
@@ -117,9 +119,11 @@ def build_summary(
         overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) for t in travels
     )
 
-    top_places = sorted(place_durations.items(), key=lambda item: item[1], reverse=True)[:3]
+    ranked_places = sorted(place_durations.items(), key=lambda item: item[1], reverse=True)
+    if max_places is not None:
+        ranked_places = ranked_places[:max_places]
     top_place_rows = []
-    for place_id, duration_sec in top_places:
+    for place_id, duration_sec in ranked_places:
         place = places_by_id.get(place_id)
         name = place["name"] if place and place["name"] else f"Place {place_id}"
         top_place_rows.append(

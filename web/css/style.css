@@ -772,8 +772,13 @@ button.ring-phone {
   font-size: 1.1rem;
 }
 
-.lifetime-band h3,
-.reports-period h3 {
+.section-count {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.85em;
+}
+
+.reports-panel h3 {
   margin: 1.25rem 0 0.5rem;
   font-size: 0.95rem;
   font-weight: 600;

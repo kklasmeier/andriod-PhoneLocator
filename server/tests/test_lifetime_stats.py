@@ -107,6 +107,7 @@ class LifetimeStatsTests(unittest.TestCase):
         self.assertIn("summary", body)
         self.assertEqual(body["lifetime"]["point_count"], 1)
         self.assertEqual(body["summary"]["device_id"], self.device_id)
+        self.assertIsInstance(body["summary"]["top_places"], list)
 
 
 if __name__ == "__main__":

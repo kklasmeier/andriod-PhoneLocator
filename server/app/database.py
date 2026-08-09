@@ -731,17 +731,21 @@ def get_visits(
     device_id: str,
     from_iso: str | None = None,
     to_iso: str | None = None,
-    limit: int = 500,
+    limit: int | None = 500,
 ) -> list[dict[str, Any]]:
     range_sql, range_params = _time_range_clause(from_iso, to_iso)
-    params: list[Any] = [device_id, *range_params, limit]
+    params: list[Any] = [device_id, *range_params]
+    limit_sql = ""
+    if limit is not None:
+        limit_sql = " LIMIT ?"
+        params.append(limit)
     with get_connection() as conn:
         rows = conn.execute(
             f"""
             SELECT * FROM visits
             WHERE device_id = ?{range_sql}
             ORDER BY started_at ASC, id ASC
-            LIMIT ?
+            {limit_sql}
             """,
             params,
         ).fetchall()

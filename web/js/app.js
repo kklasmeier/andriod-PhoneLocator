@@ -431,7 +431,7 @@ async function renderReports() {
           <div class="card-value">${formatDuration(summary.stationary_duration_sec)}</div>
         </div>
       </div>
-      <h3>Top places</h3>
+      <h3>Places <span class="section-count">(${summary.places_count})</span></h3>
       ${periodBars || '<div class="empty">No visits in this period</div>'}
       <p class="reports-coming-soon">More charts (time breakdown, travel trends, heatmap) coming in future updates.</p>
     </section>
