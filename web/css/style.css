@@ -252,6 +252,37 @@ button:hover { filter: brightness(1.08); }
   margin-top: 0.25rem;
 }
 
+.card.find-phone-card {
+  grid-column: span 2;
+  border-left: 3px solid #ef4444;
+}
+
+.find-phone-help {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0.2rem 0 0.75rem;
+  line-height: 1.4;
+}
+
+.find-phone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.card.find-phone-card .ring-status {
+  display: block;
+  margin-left: 0;
+  margin-top: 0.55rem;
+}
+
+@media (max-width: 720px) {
+  .card.find-phone-card {
+    grid-column: span 1;
+  }
+}
+
 .split {
   display: grid;
   grid-template-columns: 1fr 320px;

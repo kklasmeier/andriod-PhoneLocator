@@ -338,6 +338,15 @@ async function renderHome() {
 
   appEl.innerHTML = `
     <div class="cards">
+      <div class="card find-phone-card">
+        <div class="card-label">Find phone</div>
+        <p class="find-phone-help">Sound and vibrate on the phone’s next sync (up to ${getRingDurationSec()}s).</p>
+        <div class="find-phone-actions">
+          <button type="button" class="ring-phone" id="ring-phone-btn">Ring phone</button>
+          <button type="button" class="secondary stop-ring" id="stop-ring-btn" hidden disabled>Stop ringing</button>
+        </div>
+        <span id="ring-status" class="ring-status" aria-live="polite"></span>
+      </div>
       <div class="card ${statusClass}">
         <div class="card-label">Last seen</div>
         <div class="card-value">${latest ? relativeTime(latest.recorded_at) : "—"}</div>
@@ -372,10 +381,7 @@ async function renderHome() {
     <div class="home-map-section">
       <div class="map-panel home">
         <div class="map-controls">
-          <button type="button" class="ring-phone" id="ring-phone-btn">Ring phone</button>
-          <button type="button" class="secondary stop-ring" id="stop-ring-btn" hidden disabled>Stop ringing</button>
           <button type="button" class="secondary" id="fit-trail-btn">Fit trail</button>
-          <span id="ring-status" class="ring-status" aria-live="polite"></span>
         </div>
         <div id="home-map" class="map-container"></div>
       </div>
