@@ -214,6 +214,7 @@ class TravelItem(BaseModel):
     duration_sec: int
     distance_m: float
     avg_speed_mps: float | None = None
+    travel_mode: str | None = None
 
 
 class VisitsTimelineResponse(BaseModel):
@@ -236,6 +237,7 @@ class TravelSegmentOut(BaseModel):
     duration_sec: int
     distance_m: float
     avg_speed_mps: float | None = None
+    travel_mode: str | None = None
 
 
 class TravelResponse(BaseModel):
@@ -283,6 +285,9 @@ class LifetimeStatsResponse(BaseModel):
     stationary_duration_sec: int = 0
     travel_duration_sec: int = 0
     travel_distance_m: float = 0.0
+    walked_distance_m: float = 0.0
+    ran_distance_m: float = 0.0
+    drove_distance_m: float = 0.0
     top_places: list[LifetimePlaceSummary] = Field(default_factory=list)
     top_place: LifetimeTopPlace | None = None
 
@@ -295,6 +300,9 @@ class StatsSummaryResponse(BaseModel):
     places_count: int
     travel_duration_sec: int
     travel_distance_m: float = 0.0
+    walked_distance_m: float = 0.0
+    ran_distance_m: float = 0.0
+    drove_distance_m: float = 0.0
     travel_trips: int = 0
     stationary_duration_sec: int
     top_places: list[TopPlaceSummary]
@@ -334,6 +342,9 @@ class TrendsBucketOut(BaseModel):
     stationary_duration_sec: int = 0
     travel_duration_sec: int = 0
     travel_distance_m: float = 0.0
+    walked_distance_m: float = 0.0
+    ran_distance_m: float = 0.0
+    drove_distance_m: float = 0.0
     travel_trips: int = 0
 
 

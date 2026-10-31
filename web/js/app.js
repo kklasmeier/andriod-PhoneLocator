@@ -22,6 +22,14 @@ const bannerEl = document.getElementById("banner");
 const footerEl = document.getElementById("site-footer");
 let autoNamePollTimer = null;
 
+function travelModeLabel(mode) {
+  if (mode === "vehicle") return "Drove";
+  if (mode === "running") return "Ran";
+  if (mode === "walking") return "Walked";
+  if (mode === "slow") return "Slow";
+  return "Travel";
+}
+
 function formatAutoRenameStatus(status) {
   if (status.running) {
     const started = status.started_at ? formatTime(status.started_at) : "recently";
@@ -368,6 +376,21 @@ async function renderHome() {
         <div class="card-sub">this period</div>
       </div>
       <div class="card">
+        <div class="card-label">Walked</div>
+        <div class="card-value">${formatDistance(summary.walked_distance_m || 0)}</div>
+        <div class="card-sub">this period</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Ran</div>
+        <div class="card-value">${formatDistance(summary.ran_distance_m || 0)}</div>
+        <div class="card-sub">this period</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Drove</div>
+        <div class="card-value">${formatDistance(summary.drove_distance_m || 0)}</div>
+        <div class="card-sub">this period</div>
+      </div>
+      <div class="card">
         <div class="card-label">Stationary</div>
         <div class="card-value">${formatDuration(summary.stationary_duration_sec)}</div>
         <div class="card-sub">at places</div>
@@ -558,6 +581,21 @@ async function renderReports() {
           <div class="card-label">Distance</div>
           <div class="card-value">${formatDistance(lifetime.travel_distance_m)}</div>
           <div class="card-sub">lifetime travel</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Walked</div>
+          <div class="card-value">${formatDistance(lifetime.walked_distance_m || 0)}</div>
+          <div class="card-sub">on foot</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Ran</div>
+          <div class="card-value">${formatDistance(lifetime.ran_distance_m || 0)}</div>
+          <div class="card-sub">on foot</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Drove</div>
+          <div class="card-value">${formatDistance(lifetime.drove_distance_m || 0)}</div>
+          <div class="card-sub">lifetime</div>
         </div>
       </div>
       ${topPlaceLine ? `<p class="lifetime-highlight">${topPlaceLine}</p>` : ""}
@@ -918,7 +956,7 @@ async function renderTimeline() {
           <div class="timeline-item travel">
             <div class="timeline-time">${formatTimeShort(item.started_at)}</div>
             <div>
-              <div class="timeline-title">Travel</div>
+              <div class="timeline-title">${travelModeLabel(item.travel_mode)}</div>
               <div class="timeline-meta">${formatDuration(item.duration_sec)} · ${formatDistance(item.distance_m)} · ${formatSpeed(item.avg_speed_mps)}</div>
             </div>
             <div class="timeline-time">${formatTimeShort(item.ended_at)}</div>
@@ -1077,6 +1115,7 @@ async function renderTravel() {
         <td>${formatTime(t.started_at)}</td>
         <td>${formatTime(t.ended_at)}</td>
         <td>${escapeHtml(t.route_label || `${t.from_place_name || "Unknown"} → ${t.to_place_name || "Unknown"}`)}</td>
+        <td>${travelModeLabel(t.travel_mode)}</td>
         <td>${formatDuration(t.duration_sec)}</td>
         <td>${formatDistance(t.distance_m)}</td>
         <td>${formatSpeed(t.avg_speed_mps)}</td>
@@ -1091,7 +1130,7 @@ async function renderTravel() {
         <div class="timeline-time">${formatTimeShort(t.started_at)}</div>
         <div>
           <div class="timeline-title">${escapeHtml(t.route_label || `${t.from_place_name || "Unknown"} → ${t.to_place_name || "Unknown"}`)}</div>
-          <div class="timeline-meta">${formatDuration(t.duration_sec)} · ${formatDistance(t.distance_m)} · ${formatSpeed(t.avg_speed_mps)}</div>
+          <div class="timeline-meta">${travelModeLabel(t.travel_mode)} · ${formatDuration(t.duration_sec)} · ${formatDistance(t.distance_m)} · ${formatSpeed(t.avg_speed_mps)}</div>
         </div>
         <div class="timeline-time">${formatTimeShort(t.ended_at)}</div>
       </div>`
@@ -1108,7 +1147,7 @@ async function renderTravel() {
     <div class="travel-cards timeline">${cards}</div>
     <div class="table-wrap travel-table">
       <table>
-        <thead><tr><th>Started</th><th>End</th><th>Route</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
+        <thead><tr><th>Started</th><th>End</th><th>Route</th><th>Mode</th><th>Duration</th><th>Distance</th><th>Average speed</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>

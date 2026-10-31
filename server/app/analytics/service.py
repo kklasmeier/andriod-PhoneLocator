@@ -15,20 +15,34 @@ logger = logging.getLogger(__name__)
 
 
 def _auto_rename_background(device_id: str) -> None:
-    try:
-        result = auto_rename_places(device_id)
-        logger.info(
-            "auto-rename device=%s inherited=%s geocoded=%s api_calls=%s cache_hits=%s",
-            device_id,
-            result["places_inherited"],
-            result["places_geocoded"],
-            result["api_calls"],
-            result["cache_hits"],
-        )
-        if result["errors"]:
-            logger.warning("auto-rename errors device=%s: %s", device_id, "; ".join(result["errors"]))
-    except Exception:
-        logger.exception("auto-rename failed for device=%s", device_id)
+    import sqlite3
+    import time
+
+    result = None
+    for attempt in range(5):
+        try:
+            result = auto_rename_places(device_id)
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 4:
+                logger.exception("auto-rename failed for device=%s", device_id)
+                return
+            time.sleep(0.4 * (attempt + 1))
+        except Exception:
+            logger.exception("auto-rename failed for device=%s", device_id)
+            return
+    if result is None:
+        return
+    logger.info(
+        "auto-rename device=%s inherited=%s geocoded=%s api_calls=%s cache_hits=%s",
+        device_id,
+        result["places_inherited"],
+        result["places_geocoded"],
+        result["api_calls"],
+        result["cache_hits"],
+    )
+    if result["errors"]:
+        logger.warning("auto-rename errors device=%s: %s", device_id, "; ".join(result["errors"]))
 
 
 def schedule_auto_rename(device_id: str) -> None:
@@ -62,13 +76,18 @@ def recompute_device(device_id: str) -> None:
     schedule_auto_rename(device_id)
 
 
+def _marker_is_current(marker: str | None, latest: str | None) -> bool:
+    if marker is None or latest is None:
+        return False
+    from app.analytics.periods import parse_iso
+
+    return parse_iso(marker) >= parse_iso(latest)
+
+
 def ensure_computed(device_id: str) -> None:
-    latest = database.get_latest_point_recorded_at(device_id)
-    if latest is None:
-        return
-    meta = database.get_analytics_meta(device_id)
-    if meta is None or meta["last_point_recorded_at"] != latest:
-        recompute_device(device_id)
+    from app.analytics.sync import sync_device
+
+    sync_device(device_id)
 
 
 def ensure_lifetime_stats(device_id: str) -> dict:
@@ -78,7 +97,7 @@ def ensure_lifetime_stats(device_id: str) -> dict:
         return database.rebuild_lifetime_stats(device_id)
 
     cached, cached_at = database.get_cached_lifetime_stats(device_id)
-    if cached is not None and cached_at == latest:
+    if cached is not None and _marker_is_current(cached_at, latest):
         return cached
     return database.rebuild_lifetime_stats(device_id)
 
@@ -89,7 +108,7 @@ def ensure_daily_stats(device_id: str) -> None:
     if latest is None:
         return
     cached_at = database.get_daily_stats_point_at(device_id)
-    if cached_at != latest:
+    if not _marker_is_current(cached_at, latest):
         database.rebuild_daily_stats(device_id)
 
 
@@ -99,8 +118,15 @@ def ensure_heatmap_bins(device_id: str) -> None:
     if latest is None:
         return
     cached_at = database.get_heatmap_bins_point_at(device_id)
-    if cached_at != latest:
-        database.rebuild_heatmap_bins(device_id)
+    if _marker_is_current(cached_at, latest):
+        return
+    summary = database.get_heatmap_summary(device_id)
+    if cached_at is None and summary["bin_count"] > 0:
+        with database.get_connection() as conn:
+            database.set_heatmap_marker(conn, device_id, latest)
+            conn.commit()
+        return
+    database.rebuild_heatmap_bins(device_id)
 
 
 def build_heatmap(
@@ -157,6 +183,22 @@ def build_trends(
     }
 
 
+def _distance_in_period(
+    travels: list[dict],
+    from_iso: str,
+    to_iso: str,
+    mode: str | None = None,
+) -> float:
+    total = 0.0
+    for travel in travels:
+        if mode is not None and travel.get("travel_mode") != mode:
+            continue
+        if overlap_seconds(travel["started_at"], travel["ended_at"], from_iso, to_iso) <= 0:
+            continue
+        total += float(travel["distance_m"])
+    return total
+
+
 def build_summary(
     device_id: str,
     period: str | None = None,
@@ -174,9 +216,8 @@ def build_summary(
     else:
         period = period or "custom"
 
-    visit_limit = None if max_places is None else 500
-    visits = database.get_visits(device_id, from_iso=from_iso, to_iso=to_iso, limit=visit_limit)
-    travels = database.get_travel_segments(device_id, from_iso=from_iso, to_iso=to_iso)
+    visits = database.get_visits(device_id, from_iso=from_iso, to_iso=to_iso, limit=None)
+    travels = database.get_travel_segments(device_id, from_iso=from_iso, to_iso=to_iso, limit=None)
     places_by_id = {p["id"]: p for p in database.get_places(device_id)}
 
     stationary_duration_sec = 0
@@ -193,11 +234,10 @@ def build_summary(
     travel_duration_sec = sum(
         overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) for t in travels
     )
-    travel_distance_m = sum(
-        float(t["distance_m"])
-        for t in travels
-        if overlap_seconds(t["started_at"], t["ended_at"], from_iso, to_iso) > 0
-    )
+    travel_distance_m = _distance_in_period(travels, from_iso, to_iso)
+    walked_distance_m = _distance_in_period(travels, from_iso, to_iso, mode="walking")
+    ran_distance_m = _distance_in_period(travels, from_iso, to_iso, mode="running")
+    drove_distance_m = _distance_in_period(travels, from_iso, to_iso, mode="vehicle")
 
     ranked_places = sorted(place_durations.items(), key=lambda item: item[1], reverse=True)
     if max_places is not None:
@@ -222,6 +262,9 @@ def build_summary(
         "places_count": len(place_ids_seen),
         "travel_duration_sec": travel_duration_sec,
         "travel_distance_m": travel_distance_m,
+        "walked_distance_m": walked_distance_m,
+        "ran_distance_m": ran_distance_m,
+        "drove_distance_m": drove_distance_m,
         "travel_trips": len(
             [
                 t
@@ -235,8 +278,10 @@ def build_summary(
 
     if include_week_teaser:
         week_from, week_to = resolve_period("week")
-        week_visits = database.get_visits(device_id, from_iso=week_from, to_iso=week_to)
-        week_travels = database.get_travel_segments(device_id, from_iso=week_from, to_iso=week_to)
+        week_visits = database.get_visits(device_id, from_iso=week_from, to_iso=week_to, limit=None)
+        week_travels = database.get_travel_segments(
+            device_id, from_iso=week_from, to_iso=week_to, limit=None
+        )
         week_place_ids = {v["place_id"] for v in week_visits if v["place_id"] is not None}
         week_travel_sec = sum(
             overlap_seconds(t["started_at"], t["ended_at"], week_from, week_to) for t in week_travels
@@ -414,6 +459,7 @@ def build_visits_timeline(
                 "duration_sec": travel["duration_sec"],
                 "distance_m": travel["distance_m"],
                 "avg_speed_mps": travel["avg_speed_mps"],
+                "travel_mode": travel.get("travel_mode"),
             }
         )
 

@@ -23,6 +23,10 @@ def _web_root() -> Path | None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     database.init_db()
+    database.backfill_travel_motion()
+    from app.analytics.sync import start_sync_worker
+
+    start_sync_worker()
     yield
 
 

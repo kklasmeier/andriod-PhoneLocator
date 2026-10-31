@@ -5,6 +5,7 @@ from datetime import datetime
 
 from app.analytics.constants import PLACE_CLUSTER_RADIUS_M, STATIONARY_RADIUS_M, STATIONARY_SPEED_MPS
 from app.analytics.geo import centroid, haversine_m
+from app.analytics.motion import measure_motion
 from app.analytics.periods import parse_iso
 
 
@@ -37,6 +38,9 @@ class TravelDraft:
     ended_at: str
     distance_m: float
     points: list[TrackPoint] = field(default_factory=list)
+    peak_speed_mps: float = 0.0
+    fast_distance_m: float = 0.0
+    fast_leg_count: int = 0
 
     @property
     def duration_sec(self) -> int:
@@ -97,11 +101,17 @@ def _close_travel(points: list[TrackPoint]) -> TravelDraft:
             points[i].latitude,
             points[i].longitude,
         )
+    peak, fast_distance_m, fast_leg_count = measure_motion(
+        [(point.recorded_at, point.latitude, point.longitude) for point in points]
+    )
     return TravelDraft(
         started_at=points[0].recorded_at,
         ended_at=points[-1].recorded_at,
         distance_m=distance,
         points=list(points),
+        peak_speed_mps=peak,
+        fast_distance_m=fast_distance_m,
+        fast_leg_count=fast_leg_count,
     )
 
 

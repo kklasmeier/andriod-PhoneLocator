@@ -40,6 +40,9 @@ def _empty_bucket() -> dict[str, Any]:
         "travel_duration_sec": 0,
         "travel_distance_m": 0.0,
         "travel_trips": 0,
+        "walked_distance_m": 0.0,
+        "ran_distance_m": 0.0,
+        "drove_distance_m": 0.0,
         "_places_seen": set(),
     }
 
@@ -67,7 +70,11 @@ def compute_daily_stats_rows(
             bucket["travel_duration_sec"] += sec
             bucket["travel_trips"] += 1
             if total_sec > 0:
-                bucket["travel_distance_m"] += float(travel["distance_m"]) * sec / total_sec
+                share = float(travel["distance_m"]) * sec / total_sec
+                bucket["travel_distance_m"] += share
+                mode_key = _MODE_DISTANCE_KEYS.get(travel.get("travel_mode"))
+                if mode_key is not None:
+                    bucket[mode_key] += share
 
     tz = local_tz()
     for point in points:
@@ -87,6 +94,9 @@ def compute_daily_stats_rows(
                 "travel_duration_sec": int(bucket["travel_duration_sec"]),
                 "travel_distance_m": float(bucket["travel_distance_m"]),
                 "travel_trips": int(bucket["travel_trips"]),
+                "walked_distance_m": float(bucket["walked_distance_m"]),
+                "ran_distance_m": float(bucket["ran_distance_m"]),
+                "drove_distance_m": float(bucket["drove_distance_m"]),
             }
         )
     return rows
@@ -164,13 +174,26 @@ def aggregate_trend_buckets(
             }
         target = grouped[bucket]
         for key in _NUMERIC_KEYS:
-            if key == "travel_distance_m":
+            if key in _DISTANCE_KEYS:
                 target[key] += float(row[key])
             else:
                 target[key] += int(row[key])
 
     return [grouped[key] for key in sorted(grouped.keys())]
 
+
+_MODE_DISTANCE_KEYS = {
+    "walking": "walked_distance_m",
+    "running": "ran_distance_m",
+    "vehicle": "drove_distance_m",
+}
+
+_DISTANCE_KEYS = (
+    "travel_distance_m",
+    "walked_distance_m",
+    "ran_distance_m",
+    "drove_distance_m",
+)
 
 _NUMERIC_KEYS = (
     "point_count",
@@ -180,4 +203,7 @@ _NUMERIC_KEYS = (
     "travel_duration_sec",
     "travel_distance_m",
     "travel_trips",
+    "walked_distance_m",
+    "ran_distance_m",
+    "drove_distance_m",
 )

@@ -42,6 +42,9 @@ def _merge_travels(a: TravelDraft, b: TravelDraft) -> TravelDraft:
             ended_at=max(a.ended_at, b.ended_at),
             distance_m=a.distance_m + b.distance_m,
             points=[],
+            peak_speed_mps=max(a.peak_speed_mps, b.peak_speed_mps),
+            fast_distance_m=a.fast_distance_m + b.fast_distance_m,
+            fast_leg_count=a.fast_leg_count + b.fast_leg_count,
         )
     return _close_travel(points)
 
